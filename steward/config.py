@@ -34,10 +34,47 @@ def _expand(value: Any) -> Any:
     return _ENV_RE.sub(repl, value)
 
 
+#: 默认监听端口。
+#:
+#: 选端口的三条硬规矩，任何改这个值的人都要守住：
+#:   1. 不用 80/443/3000/5000/8000/8080 这类几乎必被占用的端口；
+#:   2. 不用 12345 / 56789 这类连续数字，撞上了很难一眼认出是谁的；
+#:   3. 落在 1024–49152 之间：低于 1024 要 root，高于 49152 是
+#:      Windows 的临时端口段，会被本机随机连接抢走。
+#: 27418 三条都满足，而且不在任何常见服务清单里。
+DEFAULT_PORT = 27418
+
+#: 这些端口在本机上几乎总有主，配置时给了就提醒一句。
+COMMON_PORTS = frozenset(
+    {
+        80, 443, 3000, 3001, 3306, 4443, 5000, 5173, 5432, 6379, 7001,
+        8000, 8001, 8080, 8081, 8082, 8443, 8888, 9000, 9001, 9090, 9091,
+        11434, 1234, 27017,
+    }
+)
+
+
+def looks_sequential(port: int) -> bool:
+    """连续数字端口：12345 / 54321 / 56789 这一类。
+
+    判定的是「出现三位以上同方向的连续递增或递减」，所以 27418 不算
+    （步长 5,-3,-3,7），而 1234、6543、9012 都算。
+    """
+    digits = str(port)
+    run, prev_step = 1, 0
+    for i in range(1, len(digits)):
+        step = int(digits[i]) - int(digits[i - 1])
+        run = run + 1 if (step in (1, -1) and (run == 1 or step == prev_step)) else 1
+        prev_step = step
+        if run >= 3:
+            return True
+    return False
+
+
 @dataclass
 class ServerCfg:
     host: str = "127.0.0.1"
-    port: int = 8010
+    port: int = DEFAULT_PORT
     api_key: str = ""
     log_level: str = "info"
 
@@ -203,10 +240,11 @@ class AppCfg:
             problems.append("base.base_url 未配置（基础模型）")
         if not self.base.model:
             problems.append("base.model 未配置（基础模型）")
-        if not self.advanced.base_url:
-            problems.append("advanced.base_url 未配置（进阶模型，不配则无法上云）")
-        if not self.advanced.model:
-            problems.append("advanced.model 未配置（进阶模型）")
+        # 进阶槽位允许空着：只有本地模型的人凭什么跑不起来。
+        # 空槽位的后果是 consult_cloud 不注入（省掉 500 tokens/轮），
+        # 这一条属于 warnings，不属于 problems。
+        if not 1 <= int(self.server.port) <= 65535:
+            problems.append(f"server.port={self.server.port} 超出 1–65535")
         if self.guard.max_calls_per_turn < 0:
             problems.append("guard.max_calls_per_turn 不能为负")
         if self.guard.max_tool_rounds < 1:
@@ -239,6 +277,36 @@ class AppCfg:
             if self.refs.max_total_chars < 1000:
                 problems.append("refs.max_total_chars 过小，至少 1000")
         return problems
+
+    def warnings(self) -> list[str]:
+        """能跑，但你应该知道的事。和 problems 分开，因为处置方式完全不同。
+
+        混在一起的后果：网关报「进阶槽位不可用」时，用户没法判断
+        这是「少个可选功能」还是「根本起不来」。
+        """
+        items: list[str] = []
+        if not self.advanced.base_url or not self.advanced.model:
+            missing = "base_url" if not self.advanced.base_url else "model"
+            items.append(
+                f"进阶槽位空着（缺 advanced.{missing}）：consult_cloud 不注入，"
+                "本地模型拿不到外援，每轮也省下约 500 tokens 的工具定义"
+            )
+        port = int(self.server.port)
+        if port in COMMON_PORTS:
+            items.append(
+                f"server.port={port} 是常见端口，本机上很容易被别的服务先占；"
+                f"建议换成 {DEFAULT_PORT} 一类不冲突的值"
+            )
+        elif looks_sequential(port):
+            items.append(f"server.port={port} 是连续数字，撞车时不好辨认是谁占的；建议换一个")
+        elif port < 1024:
+            items.append(f"server.port={port} 低于 1024，非 root 用户通常绑不上")
+        elif port >= 49152:
+            items.append(
+                f"server.port={port} 落在 Windows 临时端口段（49152+），"
+                "可能被本机随机连接临时占用，导致偶发绑定失败"
+            )
+        return items
 
 
 def _section(cls: type, data: Any):

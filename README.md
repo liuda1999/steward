@@ -3,7 +3,7 @@
 > 本地模型是主力，云端是外援。steward 管这中间的一切：什么时候值得花钱、窗口装不装得下、档案怎么不把磁盘写满。
 
 ```
-智能体 ──OpenAI 兼容──▶ 127.0.0.1:8010/v1 ──┬── 本地模型（默认）
+智能体 ──OpenAI 兼容──▶ 127.0.0.1:27418/v1 ──┬── 本地模型（默认）
                                             └── 云端模型（需模型主动申请）
 ```
 
@@ -13,7 +13,7 @@
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
 | 规模 | 约 5,600 行 Python（含注释），14 个模块 |
-| 测试 | 313 个：可靠性 20 · 对照审计 23 · 其余为各层单测与端到端 |
+| 测试 | 342 个：可靠性 20 · 对照审计 23 · 端口与槽位 28 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -196,13 +196,60 @@ python -m steward ctx           # 看本地模型的真实窗口与输入预算
 客户端这边只需要两行：
 
 ```python
-base_url = "http://127.0.0.1:8010/v1"
+base_url = "http://127.0.0.1:27418/v1"
 api_key  = "st-..."                 # init 时打印过一次，之后只存 hash
 ```
 
 **key 只在签发时显示一次。** 丢了就重新签发、吊销旧的 —— 网关只存 hash，找不回来。
 
 改造后第一次连客户端，建议先跑一遍 `python -m steward ctx`：它会把真实窗口、输入预算、计数方式全打出来。很多"模型忽然变笨"的问题，从这三个数字就能看出来。
+
+### 4.1 端口
+
+默认 **27418**。选它有三条理由，改这个值之前先看一眼：
+
+| 规矩 | 为什么 |
+|---|---|
+| 不用 80 / 443 / 8080 / 8000 / 3000 | 这些端口本机几乎总有别的服务占着，撞上了报错只有一句 `address in use` |
+| 不用 12345 / 56789 这类连续数字 | 撞车时看端口号根本分不清是谁的 |
+| 落在 1024–49151 之间 | 低于 1024 要 root；高于 49151 是 Windows 的临时端口段，会被本机随机连接抢走 |
+
+配错了不会拦住你，但会提醒：
+
+```
+[配置] 注意  server.port=8080 是常见端口，本机上很容易被别的服务先占；建议换成 27418 一类不冲突的值
+```
+
+真撞上了也不会只丢一句 `shutdown complete`：
+
+```
+[端口] 127.0.0.1:27418 已被占用（PID 13028，tasklist /FI "PID eq 13028" 可查进程名）。
+[端口] 停掉它，或用 --port 换一个（默认 27418，也可以改 config.yaml 的 server.port）。
+```
+
+临时换端口不用改配置：`python -m steward serve --port 27xxx`。
+
+### 4.2 两个槽位，可以只填一个
+
+`base` 和 `advanced` 是两个平等的模型槽位，不按"本地/云端"分。
+
+| 配置 | 结果 |
+|---|---|
+| 两个都填 | 完整能力。日常走 base，难题由模型申请后走 advanced |
+| 只填 base | **合法**。纯本地模式：不注入 `consult_cloud`，每轮少发约 500 tokens 的工具定义 |
+| 只填 advanced | 起不来。没有基础模型就没有任何模型能接活 |
+| 填了一半（有地址没模型名） | 按空槽位处理，并在启动时提醒 |
+
+空槽位是被**特意设计**成合法的，因为"我只有一台本地模型"是最常见的情况。此时网关不会塞给模型一个永远会拒绝它的工具——那 500 tokens 是每轮都要重复付的。
+
+```bash
+python -m steward serve --check -c config.yaml
+# [配置] 注意  进阶槽位空着（缺 advanced.base_url）：consult_cloud 不注入…每轮也省下约 500 tokens
+# [配置] OK  基础=http://127.0.0.1:11434/v1 model=qwen3 protocol=chat
+# [配置]     进阶=空槽位（不注入 consult_cloud）
+```
+
+`GET /health` 里也有这个状态：`advanced.configured: false`。
 
 ---
 
@@ -226,8 +273,9 @@ api_key  = "st-..."                 # init 时打印过一次，之后只存 has
 │   ├── __main__.py            serve / init / test / key / ctx / refs / artifacts
 │   └── README.md              实现细节与排错手册
 ├── docs/                        三张图，由 scripts/gen_diagrams.py 生成
-├── scripts/                     联调、真机验证、图生成
-├── tests/                       313 个用例
+├── scripts/                     联调、真机验证、图生成、推送
+│   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
+├── tests/                       342 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
 ├── ARCHITECTURE.md              架构决策与被否掉的方案
@@ -251,6 +299,29 @@ api_key  = "st-..."                 # init 时打印过一次，之后只存 has
 | `python -m steward key new --label <名字>` | 签发新 key |
 | `python -m steward key list` / `revoke` | 列出 / 吊销 |
 | `python -m steward refs <路径…>` | 查某个路径会不会被 refs 放行 |
+| `python -m steward artifacts` | 看存档占用，`--clean` 回收 |
+| `python scripts/publish.py --doctor` | 诊断推送环境（证书 / 连通性 / 令牌 / 预演） |
+| `python scripts/publish.py -m "说明"` | 提交并推送，不挑环境 |
+
+### 6.1 推送为什么需要脚本
+
+`git push` 在有代理的环境里经常过不去，而且报错会把人引向错误方向：
+
+| 报错 | 真实原因 |
+|---|---|
+| `CRYPT_E_NO_REVOCATION_CHECK` | 代理做了 TLS 中间人，git 查不到吊销列表 |
+| `unable to get local issuer certificate` | 同一件事，openssl 后端的说法 |
+| `CONNECT tunnel failed 502` | 代理只放行 api.github.com，不放行 github.com:443 |
+| `Authentication failed` | 用的是 `Authorization: bearer`，那只对 API 有效，git 要 URL 里的 `x-access-token:` |
+
+`scripts/publish.py` 把这些都封在里面：运行时现找一份**真能连通**的 CA（不写死任何路径，也不改 `.git/config`），git 走不通就自动退回 Git Data API——两条路的产物等价，后者还能用树哈希对账。
+
+```bash
+STEWARD_GH_TOKEN=xxx python scripts/publish.py --doctor   # 先看环境
+STEWARD_GH_TOKEN=xxx python scripts/publish.py -m "说明"  # 提交并推
+```
+
+令牌只从环境变量或 `--token` 读，不落盘。
 | `python -m steward artifacts` | 看存档占用，`--clean` 按策略回收 |
 
 ---
@@ -299,7 +370,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 313 个
+python -m pytest tests -q                    # 342 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```

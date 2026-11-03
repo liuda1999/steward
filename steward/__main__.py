@@ -15,6 +15,7 @@ import getpass
 import logging
 import os
 import socket
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -22,7 +23,7 @@ from pathlib import Path
 import httpx
 import uvicorn
 
-from .config import EndpointCfg, load_config
+from .config import DEFAULT_PORT, COMMON_PORTS, EndpointCfg, load_config, looks_sequential
 from .artifacts import Store
 from .context import Estimator, Measurer, Prober
 from .keys import KeyStore
@@ -58,6 +59,70 @@ def _ask_int(label: str, default: int) -> int:
     except ValueError:
         print(f"  不是整数，用默认值 {default}")
         return default
+
+
+def port_hint(port: int) -> str:
+    """选端口的建议。返回空串表示这个端口没什么好说的。
+
+    端口冲突是最难查的一类故障：报错只有一句“address in use”，
+    不告诉你是谁占的，也不告诉你当初为什么选它。所以这里把理由说全，
+    而且允许同时命中多条（80 既常见、又需要 root）。
+    """
+    reasons: list[str] = []
+    if port in COMMON_PORTS:
+        reasons.append(f"{port} 是常见端口，本机上很容易被别的服务先占")
+    if looks_sequential(port):
+        reasons.append(f"{port} 是连续数字，撞车时不好辨认是谁占的")
+    if port < 1024:
+        reasons.append(f"{port} 低于 1024，非 root 用户通常绑不上")
+    elif port >= 49152:
+        reasons.append(f"{port} 落在 Windows 临时端口段（49152+），可能被随机连接临时占走")
+    if not reasons:
+        return ""
+    return "；".join(reasons) + f"；建议 {DEFAULT_PORT}"
+
+
+def _port_owner(host: str, port: int) -> str:
+    """端口被占时返回占用者描述，空闲时返回空串。
+
+    试绑用的是临时 socket，和 uvicorn 用的是同一套语义：能绑上就是空的。
+    Windows 上不能靠 SO_REUSEADDR 判断占用（它会让孩子抢同一端口也成功），
+    所以这里用裸 bind 试一次。
+
+    注意「占用了」和「查出是谁」是两件事：查不到占用者必须仍然算占用，
+    返回空串会被调用方当成端口空闲，那就白查了。
+    """
+    bind_host = "0.0.0.0" if host in ("0.0.0.0", "::") else host
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind((bind_host, port))
+    except OSError:
+        return _describe_holder(port) or "（占用者未知）"
+    finally:
+        probe.close()
+    return ""
+
+
+def _describe_holder(port: int) -> str:
+    """尽力找出是谁占着这个端口。查不到返回空串，不影响「已被占用」的结论。"""
+    try:
+        if os.name == "nt":
+            raw = subprocess.run(["netstat", "-ano"], capture_output=True, timeout=6).stdout
+            # 中文 Windows 的 netstat 输出是 GBK，直接按 utf-8 解会抛异常，
+            # 异常发生在 reader 线程里，看起来像"命令没输出"。
+            out = raw.decode("mbcs", "replace")
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and parts[1].endswith(f":{port}") and parts[3] == "LISTENING":
+                    return f'（PID {parts[4]}，tasklist /FI "PID eq {parts[4]}" 可查进程名）'
+        else:
+            raw = subprocess.run(["ss", "-ltnp"], capture_output=True, timeout=6).stdout
+            for line in raw.decode("utf-8", "replace").splitlines():
+                if f":{port} " in line and "pid=" in line:
+                    return f"（PID {line.split('pid=')[1].split(',')[0]}）"
+    except Exception:  # noqa: BLE001 - 查占用者只是锦上添花，查不到不该影响报错
+        return ""
+    return ""
 
 
 def _write_env(path: Path, values: dict[str, str]) -> None:
@@ -260,15 +325,24 @@ def cmd_serve(args: argparse.Namespace) -> int:
     problems = cfg.validate()
     if problems:
         for item in problems:
-            print(f"[配置] {item}", file=sys.stderr)
-        if args.check:
-            return 1
-        print("[配置] 进阶槽位不可用，服务仍会启动，但 consult_cloud 会一律拦截。", file=sys.stderr)
+            print(f"[配置] 错误  {item}", file=sys.stderr)
+        print("[配置] 以上必须修掉才能启动：基础模型缺失时网关没有任何可用模型。", file=sys.stderr)
+        return 1
+
+    # 空槽位、冲突端口这类只提示不拦：它们不影响「能不能跑」，只影响「好不好用」。
+    for item in cfg.warnings():
+        print(f"[配置] 注意  {item}", file=sys.stderr)
 
     if args.check:
         store = KeyStore(cfg.auth.keys_file)
+        adv = (
+            f"{cfg.advanced.base_url} model={cfg.advanced.model} protocol={cfg.advanced.protocol}"
+            if cfg.advanced.base_url and cfg.advanced.model
+            else "空槽位（不注入 consult_cloud）"
+        )
         print(f"[配置] OK  基础={cfg.base.base_url} model={cfg.base.model} protocol={cfg.base.protocol}")
-        print(f"[配置]     进阶={cfg.advanced.base_url} model={cfg.advanced.model} protocol={cfg.advanced.protocol}")
+        print(f"[配置]     进阶={adv}")
+        print(f"[配置]     监听={cfg.server.host}:{cfg.server.port}")
         print(f"[配置]     鉴权={cfg.auth.mode}  有效 key={store.summary()['active']}")
         print(f"[配置]     单请求上限={cfg.guard.max_calls_per_turn} 每日={cfg.guard.daily_limit} 间隔={cfg.guard.min_interval_s}s")
         return 0
@@ -276,6 +350,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
     app = create_app(cfg)
     host = cfg.server.host
     shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    # 先自己试绑一次。uvicorn 撞端口时抛的是 WinError 10048 / EADDRINUSE，
+    # 混在启动日志里一闪而过，用户只看到「shutdown complete」，
+    # 会以为是配置写错了。端口冲突要一句话说清是谁的问题。
+    taken = _port_owner(host, cfg.server.port)
+    if taken:
+        print(f"[端口] {shown}:{cfg.server.port} 已被占用{taken}。", file=sys.stderr)
+        print(
+            f"[端口] 停掉它，或用 --port 换一个（默认 {DEFAULT_PORT}，也可以改 config.yaml 的 server.port）。",
+            file=sys.stderr,
+        )
+        return 1
     print(f"\n  端点 http://{shown}:{cfg.server.port}/v1")
     if host in ("0.0.0.0", "::"):
         for ip in _lan_ips():
@@ -305,11 +390,17 @@ def cmd_init(args: argparse.Namespace) -> int:
             "adv_model": args.adv_model,
             "adv_key": args.adv_key,
         }
-        port = args.port or 8010
+        port = args.port or DEFAULT_PORT
+        hint = port_hint(port)
+        if hint:
+            print(f"[端口] {hint}")
         daily_limit = args.daily_limit if args.daily_limit is not None else 5
         protocol = args.base_protocol or "chat"
     else:
-        port = _ask_int("监听端口（局域网给别的设备用填 0.0.0.0）", args.port or 8010)
+        port = _ask_int("监听端口", args.port or DEFAULT_PORT)
+        hint = port_hint(port)
+        if hint:
+            print(f"  注意：{hint}")
         print("\n-- 基础模型 --")
         values = {
             "base_url": _ask("HTTP 地址", args.base_url or "http://127.0.0.1:11434/v1"),
@@ -400,13 +491,17 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_test(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
-    rows = [("基础模型", cfg.base, True), ("进阶模型", cfg.advanced, bool(args.all))]
+    # 基础槽位必需，进阶槽位可选：空着就是「纯本地模式」，不是配置错误。
+    rows = [("基础模型", cfg.base, True, True), ("进阶模型", cfg.advanced, bool(args.all), False)]
 
     failed = 0
-    for name, ep, enabled in rows:
+    for name, ep, enabled, required in rows:
         if not ep.base_url or not ep.model:
-            print(f"{name}   未配置")
-            failed += 1
+            if required:
+                print(f"{name}   未配置")
+                failed += 1
+            else:
+                print(f"{name}   空槽位（可选）：consult_cloud 不注入，纯本地运行")
             continue
 
         info = probe(ep)

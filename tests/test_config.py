@@ -114,9 +114,25 @@ base:
   model: m
 """,
     )
+    cfg = load_config(cfg_path)
+    # 进阶槽位空着不是错误：只有本地模型的人照样能跑，只是没有外援。
+    assert cfg.validate() == []
+    assert any("advanced.base_url" in w for w in cfg.warnings())
+    assert not any("base.base_url" in w for w in cfg.warnings())
+
+
+def test_missing_base_is_still_fatal(tmp_path):
+    """基础槽位不能空：没有它网关一个模型都没有。"""
+    cfg_path = write(
+        tmp_path / "config.yaml",
+        """
+advanced:
+  base_url: https://api.example.com/v1
+  model: adv
+""",
+    )
     problems = load_config(cfg_path).validate()
-    assert any("advanced.base_url" in p for p in problems)
-    assert not any("base.base_url" in p for p in problems)
+    assert any("base.base_url" in p for p in problems)
 
 
 def test_protocol_defaults_and_rejects_unknown(tmp_path):

@@ -111,8 +111,10 @@ def _first_user_text(messages: list[dict], limit: int = 300) -> str:
     return ""
 
 
-def merge_tools(client_tools: Any, tool_def: dict) -> tuple[list[dict], bool]:
+def merge_tools(client_tools: Any, tool_def: dict | None) -> tuple[list[dict], bool]:
     tools = [t for t in (client_tools or []) if isinstance(t, dict)]
+    if tool_def is None:
+        return tools, False  # 进阶槽位空着，没有可注入的工具
     names = {(t.get("function") or {}).get("name") for t in tools}
     if CONSULT_NAME in names:
         logger.warning("客户端已自带同名工具 %s，跳过注入", CONSULT_NAME)
@@ -248,9 +250,18 @@ def create_app(cfg: AppCfg, transport: httpx.AsyncBaseTransport | None = None) -
         return max(1024, int(budget * estimator.budget_scale))
 
     system_text = cfg.prompt.system_text or DEFAULT_SYSTEM_TEXT
-    tool_def = build_consult_tool(
-        cfg.prompt.tool_description or DEFAULT_TOOL_DESCRIPTION,
-        refs_enabled=cfg.refs.enabled,
+    # 进阶槽位可以是本地端点（不需要 key），所以只要求地址和模型名
+    advanced_ready = bool(cfg.advanced.base_url and cfg.advanced.model)
+    # 空槽位就不注入工具。这不是省事，是省钱：工具定义约 500 tokens，
+    # 每一轮都要重复付一次，而它描述的通道根本不存在。模型看不到这个工具，
+    # 自然也不会去调它，比「注入一个永远被拒的工具」干净。
+    tool_def = (
+        build_consult_tool(
+            cfg.prompt.tool_description or DEFAULT_TOOL_DESCRIPTION,
+            refs_enabled=cfg.refs.enabled,
+        )
+        if advanced_ready
+        else None
     )
     resolver = Resolver(cfg.refs, Path(cfg.refs.audit_file) if cfg.refs.audit_file else None)
     if cfg.refs.enabled:
@@ -260,8 +271,6 @@ def create_app(cfg: AppCfg, transport: httpx.AsyncBaseTransport | None = None) -
             len(cfg.refs.roots),
         )
     force_finish = cfg.prompt.force_finish_text or DEFAULT_FORCE_FINISH_TEXT
-    # 进阶槽位可以是本地端点（不需要 key），所以只要求地址和模型名
-    advanced_ready = bool(cfg.advanced.base_url and cfg.advanced.model)
 
     bootstrap_key = ""
     if cfg.auth.mode == "required" and cfg.auth.auto_issue and store.empty and not cfg.server.api_key:
@@ -311,7 +320,10 @@ def create_app(cfg: AppCfg, transport: httpx.AsyncBaseTransport | None = None) -
                 limits.per_slot,
             )
         if not advanced_ready:
-            logger.warning("进阶模型配置不完整，consult_cloud 将一律拦截且不计数")
+            logger.warning(
+                "进阶槽位空着（advanced.base_url / model 未配）：不注入 consult_cloud，"
+                "每轮少发约 500 tokens 的工具定义。纯本地模式，能用，只是没有外援。"
+            )
         if cfg.context.enabled:
             if await measurer.probe():
                 logger.info("上游支持 /tokenize，上下文按精确 token 计数")
@@ -505,11 +517,11 @@ def create_app(cfg: AppCfg, transport: httpx.AsyncBaseTransport | None = None) -
         if tool_injected:
             note = f"{system_text}\n\n{quota_note}" if quota_note else system_text
         else:
-            # 客户端自带了同名工具，网关没有注入：此时再在 system 里说
-            # 「把它当外部专家」、再报 consult_cloud 的配额，就是把模型指向
-            # 一个不存在的描述。用户自定义的 system_text 仍然照发。
+            # 没有注入工具时（进阶槽位空着，或客户端自带同名工具），默认那句
+            # 「把它当外部专家」就是把模型指向一个不存在的描述，不发；
+            # 用户自定义的 system_text 仍然照发。
             note = cfg.prompt.system_text or ""
-            if note:
+            if note and advanced_ready:
                 logger.warning("未注入 %s（客户端已自带同名工具），跳过默认 system 提示", CONSULT_NAME)
         merged_messages = inject_rules(messages, note)
 
