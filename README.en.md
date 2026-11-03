@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-455%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-468%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > Your local model is the workhorse; the cloud is the specialist you call in. steward owns everything in between: when spending money is worth it, whether the context still fits, and how to keep the archive from filling your disk.
@@ -24,7 +24,7 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 | Wire protocol | `/v1/chat/completions` + `/v1/responses` (converted both ways) |
 | Dependencies | fastapi / uvicorn / httpx / PyYAML — no database |
 | Size | 5,824 lines of Python (comments included), 14 modules |
-| Tests | 455: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · console 44 · net policy 7 · cloud params 4 · deployment 33 · the rest unit and end-to-end |
+| Tests | 468: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 10 · console 44 · net policy 7 · cloud params 4 · deployment 33 · free window sizing 12 · the rest unit and end-to-end |
 | Per-turn injection | 531 tokens (system + quota + tool definition) |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 
@@ -44,7 +44,7 @@ So this takes the other path: put a `consult_cloud` tool in the tool list and le
 
 **2. The local window is far smaller than the cloud's, and its size is not fixed.**
 
-Cloud models are commonly 1M+; local ones may be 64K / 128K / 256K, and `--parallel` divides that (`-c 131072 --parallel 4` gives 32,768 per slot).
+Cloud models are commonly 1M+; local ones are often 64K / 128K / 256K, and `--parallel` divides that (`-c 131072 --parallel 4` gives 32,768 per slot). **Those three are examples, not tiers**: the window is any integer (`context.ctx_limit`, e.g. 100000 or 1048576). The gateway probes the model for the real value at startup and hard-codes no enumeration.
 
 Worse: llama.cpp with `--context-shift` **drops from position 0**, so the system prompt and tool definitions die first; Ollama truncates from the head and only writes a server-side log. Both return **HTTP 200**. Exceeding the window is not an error — it just makes the model quietly dumber.
 
@@ -464,7 +464,7 @@ python -m steward serve
 ├── scripts/                   launcher, integration tests, live checks, diagrams, publishing
 │   ├── start.sh / start.bat   the formal launch entry (check env, prepare config, start)
 │   └── publish.py             push to GitHub: git first, Git Data API as fallback
-├── tests/                     455 cases
+├── tests/                     468 cases
 │   └── fixtures/              363-message history sample used by the audit
 ├── legacy/                    archives of two earlier generations, not recommended
 ├── pyproject.toml             packaging metadata: installs the steward command
@@ -562,7 +562,7 @@ refs:          # let the cloud read local files. Off by default — the only out
 ## 8. Tests
 
 ```bash
-python -m pytest tests -q                    # 455
+python -m pytest tests -q                    # 468
 python -m pytest tests/test_audit.py -s -q   # just the comparison tables
 python scripts/ctx_live.py --fit 130000 --spine   # one real trim + spine against a live model
 ```

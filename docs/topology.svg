@@ -14,7 +14,7 @@
 <text x="835.0" y="95.3" text-anchor="middle" font-size="12.5" fill="#52606d">按次计费 · 受四道闸限制</text>
 <rect x="720" y="152" width="230" height="92" rx="10" fill="#e6f4ea" stroke="#2f7d4f" stroke-width="1.4"/>
 <text x="835.0" y="186.3" text-anchor="middle" font-size="15" font-weight="600" fill="#1f2933">基础模型（本地）</text>
-<text x="835.0" y="202.8" text-anchor="middle" font-size="12.5" fill="#52606d">64K–256K · 不固定</text>
+<text x="835.0" y="202.8" text-anchor="middle" font-size="12.5" fill="#52606d">任意窗口 · 自动探测</text>
 <text x="835.0" y="219.3" text-anchor="middle" font-size="12.5" fill="#52606d">llama.cpp / vLLM / Ollama</text>
 <rect x="720" y="274" width="230" height="92" rx="10" fill="#f3eefc" stroke="#6b4c9a" stroke-width="1.4"/>
 <text x="835.0" y="308.3" text-anchor="middle" font-size="15" font-weight="600" fill="#1f2933">磁盘</text>

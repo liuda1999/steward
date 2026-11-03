@@ -519,3 +519,62 @@ def test_report_dict_stays_lean():
     trimmer, _ = make_trimmer()
     _, report = trimmer.fit(build_history(pairs=6), budget=2000, target=1000, keep_recent=2)
     assert "dropped_messages" not in report.as_dict()
+
+
+# ------------------------------------------------- 窗口不是固定档位
+
+
+@pytest.mark.parametrize(
+    "n",
+    # 故意全挑不在 64K / 128K / 256K 上的值：曾经有人担心窗口被写成
+    # 三档枚举，只要这些都能原样用，就说明没有白名单。
+    [1_024, 32_000, 40_000, 100_000, 200_000, 262_145, 500_000, 1_048_576, 2_000_000],
+)
+def test_ctx_limit_is_a_free_integer_not_a_fixed_tier(n):
+    """context.ctx_limit 是任意整数，不是 64K/128K/256K 三选一。"""
+    from steward.config import AppCfg
+
+    cfg = AppCfg()
+    cfg.context.ctx_limit = n
+    ctx_problems = [p for p in cfg.validate() if "ctx" in p.lower()]
+    assert ctx_problems == [], f"ctx_limit={n} 被校验拦下：{ctx_problems}"
+
+    limits = Limits().finalize(cfg.context, cfg.base.max_tokens)
+    assert limits.per_slot == n
+    assert limits.usable == int(n * cfg.context.usable_ratio)
+    # 预算随窗口单调增，不能被钳到某个档位上
+    assert limits.budget > n * 0.5
+
+
+def test_probe_returns_arbitrary_window_verbatim():
+    """自动探测也不做档位换算，上游报多少就是多少（含 1M+）。"""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/props":
+            return httpx.Response(
+                200,
+                json={"default_generation_settings": {"n_ctx": 1_048_576}, "total_slots": 1},
+            )
+        return httpx.Response(404)
+
+    limits = _probe(ContextCfg(), "http://local.test/v1", handler)
+    assert limits.source == "props"
+    assert limits.per_slot == 1_048_576
+
+
+def test_ctx_limit_is_a_ceiling_not_a_floor():
+    """探测成功时 ctx_limit 只能压低、不能抬高真实窗口。
+
+    手填一个比探测值更大的数不会让网关误以为窗口变大了 —— 真去按
+    更大的窗口塞，上游就会静默截断，这是最危险的一类配置错误。
+    """
+    cfg = ContextCfg(ctx_limit=2_000_000, usable_ratio=0.85)
+    limits = Limits(per_slot=131_072, source="props").finalize(cfg, out_reserve=0)
+    assert limits.per_slot == 131_072
+
+
+def test_console_accepts_arbitrary_window_value():
+    """控制台保存路径不能偷偷把值夹回档位。"""
+    from steward.webconsole import _coerce
+
+    for raw, expected in (("100000", 100_000), (1_048_576, 1_048_576), ("2000000", 2_000_000)):
+        assert _coerce("int", raw, "context.ctx_limit") == expected

@@ -113,3 +113,22 @@ def test_source_files_carry_spdx():
         if "SPDX-License-Identifier: Apache-2.0" not in p.read_text(encoding="utf-8").splitlines()[0]
     ]
     assert not missing, f"缺 SPDX 头：{missing}"
+
+
+def test_window_is_documented_as_free_not_tiered():
+    """上下文窗口不能在任何面向用户的文档里被写成固定档位。
+
+    64K/128K/256K 是举例，不是枚举。这条盯的是措辞：一旦有人把模板
+    注释或 README 改成「三档可选」，读的人就会以为别的窗口填不进去。
+    行为上「任意整数可用」由 tests/test_context.py 的用例锁着。
+    """
+    tpl = (ROOT / "steward" / "config.example.yaml").read_text(encoding="utf-8")
+    assert "任意整数" in tpl and "没有档位限制" in tpl
+    # init 命令内嵌的模板也得是同一套说法
+    cli = (ROOT / "steward" / "__main__.py").read_text(encoding="utf-8")
+    assert "任意整数" in cli
+
+    zh = ZH.read_text(encoding="utf-8")
+    en = EN.read_text(encoding="utf-8")
+    assert "不是档位" in zh
+    assert "not tiers" in en

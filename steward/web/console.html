@@ -197,7 +197,7 @@
       <section class="card">
         <h2>上下文</h2>
         <div class="row"><label>窗口上限</label><input type="number" min="0" data-f="context.ctx_limit">
-          <span class="hint">0 = 启动时自动探测</span></div>
+          <span class="hint">任意整数，不限档位（如 100000 / 1048576）；0 = 启动时自动探测。探测到真实值时它只作为上限</span></div>
         <div class="row"><label>裁到预算的</label><input type="number" step="0.05" min="0.3" max="1" data-f="context.target_ratio"></div>
         <div class="row"><label>任务骨架</label>
           <div class="sw"><input type="checkbox" id="spine"><label for="spine" style="color:inherit">裁剪后生成六行摘要</label></div>

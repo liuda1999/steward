@@ -52,10 +52,16 @@ guard:
   state_file: state/usage.json
 
 # 上下文治理：网关负责记账，因为只有它知道本地模型真能装多少。
-# 本地窗口 64K/128K/256K 不固定，云端 1M+，不记账就必然在长任务里爆。
+# 窗口大小没有档位限制：64K/128K/256K 只是常见举例，实际可以是任意值，
+# 更大的 1M 甚至更多也一样。云端 1M+，不记账就必然在长任务里爆。
 context:
   enabled: true
-  ctx_limit: 0            # 0=自动探测（llama.cpp /props、vLLM max_model_len、LM Studio）
+  # 任意整数，单位是 token，不预设 64K/128K/256K 这类档位。
+  #   0  = 启动时自动探测（llama.cpp /props、vLLM max_model_len、LM Studio）
+  #   >0 = 显式指定；探测不到时直接采用，探测到时只作为上限（取较小值，
+  #        防止手填过大导致上游静默截断）。例如 100000、1048576 都合法。
+  # 自动探测全部失败且这里留 0 时，保守按 32768 处理。
+  ctx_limit: 0
   usable_ratio: 0.85      # 名义窗口里真正好用的比例；长上下文中段信息本来就弱
   target_ratio: 0.65      # 一次裁剪砍到预算的多少。砍得深撑得久，但前缀重算更贵
   min_clear_tokens: 8000  # 一次至少清这么多，否则不值得让 KV 缓存失效

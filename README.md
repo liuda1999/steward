@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-455%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-468%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > 本地模型是主力，云端是外援。steward 管这中间的一切：什么时候值得花钱、窗口装不装得下、档案怎么不把磁盘写满。
@@ -24,7 +24,7 @@
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
 | 规模 | 5,824 行 Python（含注释），14 个模块 |
-| 测试 | 455 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 44 · 网络策略 7 · 云端参数 4 · 部署验收 33 · 其余为各层单测与端到端 |
+| 测试 | 468 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 10 · 控制台 44 · 网络策略 7 · 云端参数 4 · 部署验收 33 · 窗口自由度 12 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -44,7 +44,7 @@
 
 **2. 本地窗口远小于云端，而且长度不固定。**
 
-云端普遍 1M+，本地可能 64K / 128K / 256K，还受 `--parallel` 影响（`-c 131072 --parallel 4` 实际每槽只有 32768）。
+云端普遍 1M+，本地常见 64K / 128K / 256K，还受 `--parallel` 影响（`-c 131072 --parallel 4` 实际每槽只有 32768）。**这三个数只是举例，不是档位**：窗口可以是任意整数（`context.ctx_limit`，例如 100000 或 1048576），网关默认启动时向模型自动探测真实值，不预设任何枚举。
 
 更麻烦的是：llama.cpp 开 `--context-shift` 会**从位置 0 开始丢**，system prompt 和工具定义最先阵亡；Ollama 从头截断只写服务端日志；两者的 HTTP 状态码都是 **200**。也就是说，超窗不报错，只是模型忽然变笨。
 
@@ -451,7 +451,7 @@ python -m steward serve
 ├── scripts/                     启动脚本、联调、真机验证、图生成、推送
 │   ├── start.sh / start.bat      正式启动入口（检查环境 → 备配置 → 起服务）
 │   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
-├── tests/                       455 个用例
+├── tests/                       468 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
 ├── pyproject.toml               打包元数据：装完有 steward 命令
@@ -550,7 +550,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 455 个
+python -m pytest tests -q                    # 468 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```

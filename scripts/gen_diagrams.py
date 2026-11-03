@@ -276,7 +276,7 @@ def topology() -> Canvas:
     ], C_GATE)
 
     c.box(720, 26, 230, 96, "进阶模型（云端）", ["1M+ 上下文", "按次计费 · 受四道闸限制"], C_CLOUD)
-    c.box(720, 152, 230, 92, "基础模型（本地）", ["64K–256K · 不固定", "llama.cpp / vLLM / Ollama"], C_LOCAL)
+    c.box(720, 152, 230, 92, "基础模型（本地）", ["任意窗口 · 自动探测", "llama.cpp / vLLM / Ollama"], C_LOCAL)
     c.box(720, 274, 230, 92, "磁盘", ["artifacts/ 交付物", "state/ 配额·系数"], C_DISK)
     c.box(720, 396, 230, 92, "本地文件系统", ["refs 白名单内", "默认关闭 · 有审计"], C_DISK, dashed=True)
 
