@@ -132,3 +132,23 @@ def test_window_is_documented_as_free_not_tiered():
     en = EN.read_text(encoding="utf-8")
     assert "不是档位" in zh
     assert "not tiers" in en
+
+
+def test_first_screen_carries_search_terms():
+    """首屏那几个词决定了别人能不能搜到。
+
+    GitHub 的仓库搜索只索引 name / description / topics，不索引 README
+    正文；搜索引擎则读首段。所以规范词「LLM gateway」必须出现在 H1 之后、
+    第一条分隔线之前的引用块里，而不是埋在第五章。
+    """
+    for path in (ZH, EN):
+        first_screen = path.read_text(encoding="utf-8").split("\n---\n")[0]
+        assert "LLM gateway" in first_screen, f"{path.name} 首屏缺「LLM gateway」"
+        assert "OpenAI-compatible" in first_screen, f"{path.name} 首屏缺「OpenAI-compatible」"
+
+
+def test_pyproject_keywords_cover_core_terms():
+    """PyPI 搜索读 keywords；缺一个核心词就少一条被发现的路。"""
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    for term in ("llm-gateway", "openai-compatible", "local-llm", "context-window", "token-budget"):
+        assert term in text, f"pyproject 的 keywords 缺 {term}"

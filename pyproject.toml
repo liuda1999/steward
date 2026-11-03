@@ -14,11 +14,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "steward-gateway"
 version = "1.5.0"
-description = "本地模型管家：两个模型槽位，对外一把 key，管账 / 管窗 / 管档案"
+description = "Local-first LLM gateway: one OpenAI-compatible endpoint, two model slots, token budget and context-window governance. 本地优先的 LLM 网关。"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "liuda1999" }]
-keywords = ["llm", "gateway", "openai-compatible", "context-window", "quota", "local-llm"]
+keywords = [
+    "llm", "llm-gateway", "ai-gateway", "llm-proxy", "openai-compatible",
+    "openai-proxy", "local-llm", "llama-cpp", "ollama", "vllm",
+    "context-window", "token-budget", "quota", "rate-limiting", "self-hosted",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

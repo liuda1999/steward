@@ -4,10 +4,10 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-468%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-470%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
-> 本地模型当主力，云端当外援。steward 是夹在中间的网关：什么时候值得花钱、窗口装不装得下、交付物往哪放，都由它记账。
+> steward 是一个**本地优先的 LLM 网关**（local-first LLM gateway）：一个 **OpenAI-compatible** 端点、两个模型槽位。本地模型当主力，云端当外援 —— 什么时候值得花钱、窗口装不装得下、交付物往哪放，都由它记账。
 > **浏览器打开 <http://127.0.0.1:27418/> 就是控制台** —— 填槽位、改配额、签发 key，不用碰命令行。
 
 ```

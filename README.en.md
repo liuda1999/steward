@@ -4,10 +4,10 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-468%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-470%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
-> Your local model is the workhorse; the cloud is the specialist you call in. steward is the gateway in between: when spending is worth it, whether the window still fits, and where deliverables go.
+> steward is a **local-first LLM gateway**: one OpenAI-compatible endpoint, two model slots. Your local model is the workhorse; the cloud is the specialist it calls in — when spending is worth it, whether the window still fits, and where deliverables go.
 > **Open <http://127.0.0.1:27418/> for the console** — fill the slots, tune quotas, issue keys, never touch the command line.
 
 ```
