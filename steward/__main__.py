@@ -529,6 +529,23 @@ def _banner(cfg, app) -> None:
     print(flush=True)
 
 
+def _quiet_connection_reset(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    """压掉「客户端断开」的 traceback 噪音。
+
+    浏览器刷新、关标签页时，Windows 的 proactor 会在 _call_connection_lost
+    里抛 ConnectionResetError，asyncio 默认处理器把它当未捕获异常，打一整段
+    Traceback 到终端。用户看到的是「Traceback … ConnectionResetError」，
+    第一反应是进程崩了，其实请求早就 200 返回完了。
+
+    只吞这一类（连接被对端重置/中止）。其它异常照常交给默认处理器 ——
+    真出问题时不能因为这条过滤器而看不见。
+    """
+    exc = context.get("exception")
+    if isinstance(exc, (ConnectionResetError, ConnectionAbortedError)):
+        return
+    loop.default_exception_handler(context)
+
+
 async def _serve_loop(cfg_path: Path, args: argparse.Namespace) -> int:
     """起服务；控制台请求重启时，重新读配置再起一次。
 
@@ -536,6 +553,7 @@ async def _serve_loop(cfg_path: Path, args: argparse.Namespace) -> int:
     绑上去，不会和「还没退干净的老进程」抢同一个 socket。日志也还在用户
     原来那个终端里 —— 派生进程的话日志会跑到没人看的地方去。
     """
+    asyncio.get_running_loop().set_exception_handler(_quiet_connection_reset)
     first = True
     while True:
         if not first:

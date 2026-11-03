@@ -20,7 +20,7 @@ from steward.netpolicy import client_kwargs, host_of, is_direct
         "127.0.0.53",
         "0.0.0.0",
         "::1",
-        "192.168.0.108",
+        "192.168.1.50",
         "10.0.0.5",
         "172.16.3.4",
         "169.254.1.1",
@@ -41,7 +41,7 @@ def test_public_addresses_may_use_proxy(host):
 
 def test_client_kwargs_bypasses_proxy_for_local():
     assert client_kwargs("http://127.0.0.1:11434/v1")["trust_env"] is False
-    assert client_kwargs("http://192.168.0.108:23456/v1")["trust_env"] is False
+    assert client_kwargs("http://192.168.1.50:8080/v1")["trust_env"] is False
 
 
 def test_client_kwargs_keeps_proxy_for_public():

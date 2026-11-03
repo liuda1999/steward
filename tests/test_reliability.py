@@ -434,3 +434,29 @@ def test_trim_keeps_output_structurally_valid():
             live.discard(m.get("tool_call_id"))
         else:
             live = set()
+
+
+def test_connection_reset_noise_is_suppressed():
+    """浏览器断开连接不该在终端里打成 traceback。
+
+    Windows 的 proactor 在 _call_connection_lost 里抛 ConnectionResetError，
+    asyncio 默认会打一整段 Traceback，看起来像进程崩了。只允许吞这一类。
+    """
+    from steward.__main__ import _quiet_connection_reset
+
+    seen: list[dict] = []
+
+    class Loop:
+        def default_exception_handler(self, context: dict) -> None:
+            seen.append(context)
+
+    loop = Loop()
+    _quiet_connection_reset(loop, {"exception": ConnectionResetError(10054, "reset")})
+    _quiet_connection_reset(loop, {"exception": ConnectionAbortedError(10053, "aborted")})
+    assert seen == [], "连接重置被当成异常打印了"
+
+    _quiet_connection_reset(loop, {"exception": RuntimeError("真的出错了")})
+    assert len(seen) == 1, "真异常被一起吞掉了"
+
+    _quiet_connection_reset(loop, {"message": "没有 exception 字段"})
+    assert len(seen) == 2, "没有 exception 的上下文应交给默认处理器"
