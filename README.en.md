@@ -4,8 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-422%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.4.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-455%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > Your local model is the workhorse; the cloud is the specialist you call in. steward owns everything in between: when spending money is worth it, whether the context still fits, and how to keep the archive from filling your disk.
 > **Open `http://127.0.0.1:27418/` for the console** — fill both slots, tune the quota, issue project keys, never touch the command line.
@@ -17,14 +17,14 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 
 | | |
 |---|---|
-| Version | **v1.4.0** ([release notes](docs/releases/v1.4.0.md)) |
+| Version | **v1.5.0** ([release notes](docs/releases/v1.5.0.md)) |
 | License | **Apache-2.0** ([LICENSE](LICENSE) · [NOTICE](NOTICE)) — commercial use, modification, closed-source distribution, with a patent grant |
 | Shape | single-process FastAPI gateway, stateless; web console on the same port |
 | Default port | 27418 |
 | Wire protocol | `/v1/chat/completions` + `/v1/responses` (converted both ways) |
 | Dependencies | fastapi / uvicorn / httpx / PyYAML — no database |
 | Size | 5,824 lines of Python (comments included), 14 modules |
-| Tests | 422: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · console 44 · net policy 7 · cloud params 4 · the rest unit and end-to-end |
+| Tests | 455: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · console 44 · net policy 7 · cloud params 4 · deployment 33 · the rest unit and end-to-end |
 | Per-turn injection | 531 tokens (system + quota + tool definition) |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 
@@ -185,22 +185,46 @@ Three constraints learned from long use:
 git clone https://github.com/liuda1999/steward.git
 cd steward
 
-# 1. dependencies (Python 3.11+)
-pip install -r requirements.txt
-
-# 2. start with the shipped example config
-python -m steward serve
-
-# 3. open http://127.0.0.1:27418/, fill both slots, save, restart
+# One command: check the environment, install deps, generate the config, start
+./scripts/start.sh          # Windows: scripts/start.bat
 ```
 
-**Start with the console** — no YAML editing: type the URL, model name and API key, hit "test connection" to prove it answers, then save. Keys go into the adjacent `.env` (`config.yaml` keeps the `${BASE_API_KEY}` placeholder) and every comment in the config file survives.
+It reports each step — Python version, dependencies, config, config validation — then
+prints the console URL and the one-time token:
+
+```
+  steward 1.5.0  startup check
+
+  [1/4] Python 3.13.14  OK
+  [2/4] dependencies  OK
+  [3/4] config  /path/to/steward/config.yaml
+  [4/4] config check  OK
+```
+
+(The progress lines are printed in Chinese; the numbers and the paths are not.)
+
+**Then open <http://127.0.0.1:27418/>, paste the token, fill both slots, and hit "save and restart".**
+
+Leaving the **advanced slot empty is fine** — and it is the cheapest setting: without it
+`consult_cloud` is never injected, which saves roughly 500 tokens per turn and cannot
+accidentally call a cloud API. Get it working locally first, then decide about the cloud.
+
+> On first start a `config.yaml` is generated in the current directory from the shipped
+> template. So `git clone` is followed by nothing else — previously this step had to be
+> guessed, and it was the easiest one to get stuck on.
 
 The CLI is still there, and equivalent:
 
 ```bash
 python -m steward init          # interactive wizard, good for one-shot setup
 python -m steward serve --check # validate the config without starting
+```
+
+Install it as a command instead (optional — afterwards you just type `steward`):
+
+```bash
+pip install -e .
+steward serve
 ```
 
 No local model yet? Point both `base_url`s at any OpenAI-compatible endpoint; `python -m steward test` tells you whether they answer.
@@ -222,6 +246,12 @@ api_key  = "st-..."                 # printed once by init, only the hash is sto
 **The key is shown exactly once.** Lose it and issue a new one, revoke the old — the gateway stores only a hash and cannot recover it. The console's *project key* panel issues and revokes them, with the same one-time display.
 
 On first connection, run `python -m steward ctx`: it prints the real window, the input budget and the counting method. Most "the model suddenly got dumb" problems are visible in those three numbers.
+
+### 4.0 Deployment and operations
+
+Sharing over the LAN, running as a service at boot, systemd / Task Scheduler units, the
+upgrade procedure and the troubleshooting table all live in
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The section above is all you need to get it running.
 
 ### 4.1 Port
 
@@ -423,16 +453,21 @@ python -m steward serve
 │   ├── webconsole.py          web console: routes, config writing, session
 │   ├── web/console.html       console page (single file, no external deps)
 │   ├── server.py              FastAPI routes, auth, tool loop
-│   ├── __main__.py            serve / init / test / key / ctx / refs / artifacts
+│   ├── __main__.py            start / serve / init / test / key / ctx / refs / artifacts
 │   ├── envfile.py             .env reading and writing (init + console)
 │   ├── netpolicy.py           net policy: direct for local, proxy for public
+│   ├── config.example.yaml    config template (config.yaml is generated from it)
 │   └── README.md              implementation notes and troubleshooting (Chinese)
-├── docs/                      three diagrams, generated by scripts/gen_diagrams.py
-├── scripts/                   integration tests, live checks, diagram generation, publishing
+├── docs/                      three diagrams + the deployment guide
+│   ├── DEPLOYMENT.md          deployment and startup: local, LAN, at boot, upgrade (Chinese)
+│   └── releases/              release notes per version
+├── scripts/                   launcher, integration tests, live checks, diagrams, publishing
+│   ├── start.sh / start.bat   the formal launch entry (check env, prepare config, start)
 │   └── publish.py             push to GitHub: git first, Git Data API as fallback
-├── tests/                     422 cases
+├── tests/                     455 cases
 │   └── fixtures/              363-message history sample used by the audit
 ├── legacy/                    archives of two earlier generations, not recommended
+├── pyproject.toml             packaging metadata: installs the steward command
 ├── ARCHITECTURE.md            decisions and the alternatives that lost (Chinese)
 ├── CONTEXT-DESIGN.md          the context-governance argument (Chinese)
 ├── HANDOFF-PROTOCOL.md        original definition of the brief and the four-part reply (Chinese)
@@ -447,6 +482,7 @@ python -m steward serve
 
 | Command | Purpose |
 |---|---|
+| `python -m steward start` | **the formal launch entry**: check env, prepare config, start (recommended for new users) |
 | `python -m steward serve` | start the gateway |
 | `python -m steward init` | configure both slots and issue the first key |
 | `python -m steward test` | connectivity of both endpoints |
@@ -526,7 +562,7 @@ refs:          # let the cloud read local files. Off by default — the only out
 ## 8. Tests
 
 ```bash
-python -m pytest tests -q                    # 422
+python -m pytest tests -q                    # 455
 python -m pytest tests/test_audit.py -s -q   # just the comparison tables
 python scripts/ctx_live.py --fit 130000 --spine   # one real trim + spine against a live model
 ```
@@ -555,6 +591,7 @@ Measured on real hardware (27B / `n_ctx=131072` / single slot / prefill 1305 tok
 
 | Document | Contents |
 |---|---|
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | **Deployment and startup**: local launch, LAN sharing, running at boot, upgrades, troubleshooting (Chinese) |
 | `steward/README.md` | implementation detail: how each module works, what each parameter means, troubleshooting (Chinese) |
 | `ARCHITECTURE.md` | why it is built this way: decisions and rejected alternatives (Chinese) |
 | `CONTEXT-DESIGN.md` | full analysis of the window problem and the L0–L5 design, with P0–P3 delivery notes (Chinese) |

@@ -28,10 +28,14 @@ base:
   min_max_tokens: 1024                   # 客户端 max_tokens 太小时抬上来，防推理 token 截断工具参数
 
 # 槽位二：进阶模型 —— 只在复杂任务时调用，按次计费，受配额硬限制
+#
+# 留空是合法配置，而且是最省的一种：不注入 consult_cloud，每轮少约 500
+# tokens 的工具定义。填上才启用云端外援。
 advanced:
-  base_url: https://your-provider.example.com/v1
-  api_key: ${ADVANCED_API_KEY}
-  model: your-advanced-model
+  base_url: ""                             # 云端地址。留空 = 纯本地模式
+  api_key: ${ADVANCED_API_KEY:-}           # 上游令牌，留空表示不校验
+  model: ""                                # 模型标识。填了 base_url 也得填这个，
+                                           # 少一个就算空槽位（不注入 consult_cloud）
   protocol: chat
   timeout_s: 120
   max_tokens: 4096

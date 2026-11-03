@@ -30,7 +30,9 @@ from .config import (
     COMMON_PORTS,
     DEFAULT_PORT,
     EndpointCfg,
+    ensure_config,
     find_config,
+    is_pristine_config,
     load_config,
     looks_sequential,
 )
@@ -42,7 +44,7 @@ from .responses import chat_to_responses, responses_to_chat
 from .server import create_app, take_restart
 from .upstream import probe
 
-COMMANDS = {"serve", "init", "test", "key", "ctx", "refs", "artifacts"}
+COMMANDS = {"serve", "start", "init", "test", "key", "ctx", "refs", "artifacts"}
 
 
 # ---------------------------------------------------------------- 工具
@@ -300,8 +302,155 @@ prompt:
 # ---------------------------------------------------------------- 命令
 
 
+def cmd_start(args: argparse.Namespace) -> int:
+    """本地正式启动入口。
+
+    为什么要有这一条，而不是直接让人敲 `serve`：
+
+    `serve` 的前置条件是「配置已经存在且填好了」。可新用户手上只有一份
+    刚 clone 下来的代码，配置文件长什么样、放哪、两个槽位填什么，全都不知道。
+    让他自己拼出 `python -m steward init` 还是 `steward serve`、
+    配置文件叫 `config.yaml` 还是别的、装包还是用 venv —— 这些都是
+    「文档没写清楚」而不是「用户不会」。
+
+    所以 `start` 把整条首次启动链路收进一条命令：检查环境 → 准备配置 →
+    起服务 → 打印控制台地址。跑不通时给出**具体到命令**的下一步，
+    而不是一句「配置错误」。
+    """
+    root = Path(args.root).expanduser().resolve() if args.root else Path.cwd()
+
+    print(f"\n  steward {__version__}  启动检查\n", flush=True)
+
+    # 1. Python 版本。项目用了 3.11+ 的语法（X | None 之类在注解位置）。
+    if sys.version_info < (3, 11):
+        print(
+            f"[环境] Python {sys.version.split()[0]} 太低，需要 3.11 或更高。"
+            "项目用到了 3.11 引入的语法，低版本会在 import 阶段就炸。",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"  [1/4] Python {sys.version.split()[0]}  OK", flush=True)
+
+    # 2. 依赖。缺了就直接装，省得用户先去查该装什么。
+    missing = _missing_deps()
+    if missing:
+        print(f"  [2/4] 依赖缺失：{', '.join(missing)}  正在安装…", flush=True)
+        if not _install_deps(missing):
+            print(
+                f"[环境] 自动安装失败。手动装一下即可：\n"
+                f"    pip install {' '.join(missing)}",
+                file=sys.stderr,
+            )
+            return 1
+        still = _missing_deps()
+        if still:
+            print(f"[环境] 装完仍然缺：{', '.join(still)}", file=sys.stderr)
+            return 1
+    print("  [2/4] 依赖齐全  OK", flush=True)
+
+    # 3. 配置。找不到就用随包模板生成一份，让服务能起来。
+    cfg_path = Path(args.config).expanduser().resolve() if args.config else find_config()
+    created = ensure_config(cfg_path)
+    if created:
+        print(f"  [3/4] 首次启动，已生成配置：{cfg_path}", flush=True)
+    else:
+        print(f"  [3/4] 配置就位：{cfg_path}", flush=True)
+
+    cfg = load_config(cfg_path)
+    if args.host:
+        cfg.server.host = args.host
+    if args.port:
+        cfg.server.port = args.port
+
+    # 4. 配置本身能不能用。基础模型没填是最常见的一种，直接说清楚去哪填。
+    problems = cfg.validate()
+    if problems:
+        for item in problems:
+            print(f"  [4/4] 配置有问题：{item}", file=sys.stderr)
+        host = args.host or cfg.server.host
+        port = args.port or cfg.server.port
+        shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+        print(
+            f"\n  配置还没填完。最省事的办法：\n"
+            f"    1) 启动服务（带占位配置也能起）\n"
+            f"    2) 浏览器打开 http://{shown}:{port}/\n"
+            f"    3) 在控制台里填两个槽位，点「保存并重启」\n\n"
+            f"  或者用命令行填：\n"
+            f"    steward init\n",
+            file=sys.stderr,
+        )
+        # 不直接退出：配置不全也能起服务（控制台正需要它），
+        # 只是 /v1/chat/completions 会因为基础模型缺失而报错。
+        print("  继续启动（控制台可用，API 调用会失败）", file=sys.stderr)
+    else:
+        print("  [4/4] 配置校验通过  OK", flush=True)
+
+    for item in cfg.warnings():
+        print(f"  [4/4] 注意：{item}", file=sys.stderr)
+
+    if getattr(args, "check", False):
+        print("\n  --check：检查完毕，没有启动服务。\n", flush=True)
+        return 0
+
+    print("", flush=True)
+    return asyncio.run(_serve_loop(cfg_path, args))
+
+
+def _missing_deps() -> list[str]:
+    """缺哪些依赖。返回包名列表，空列表表示齐全。"""
+    import importlib.util
+
+    wanted = {
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        "httpx": "httpx",
+        "yaml": "PyYAML",
+    }
+    missing = []
+    for module, package in wanted.items():
+        if importlib.util.find_spec(module) is None:
+            missing.append(package)
+    return missing
+
+
+def _install_deps(packages: list[str]) -> bool:
+    """装依赖。返回是否成功。
+
+    只装缺的那几个，不动已装的版本 —— 用户环境里的 fastapi 可能是
+    他们特意升级过的，pip install -U 会把它拽回去。
+    """
+    cmd = [sys.executable, "-m", "pip", "install", *packages]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    except OSError:
+        return False
+    if proc.returncode != 0:
+        print((proc.stderr or proc.stdout or "").strip()[-800:], file=sys.stderr)
+        return False
+    return True
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
-    cfg = load_config(args.config)
+    # 配置文件在哪：显式指定 > 环境变量 > 当前目录 > 首次启动时生成的位置。
+    # 先定下来再读，免得读的是一份、写的（控制台保存时）是另一份。
+    cfg_path = Path(args.config).expanduser().resolve() if args.config else find_config()
+
+    # 首次启动：还没有任何配置文件时，用随包模板生成一份。
+    # 不这么做的话，`git clone` 之后第一条 `steward serve` 只会得到一句
+    # 「base.base_url 未配置」——用户无从知道该建文件、放哪、叫什么名。
+    created = ensure_config(cfg_path)
+    if created:
+        print(
+            f"[配置] 首次启动：已用随包模板生成 {cfg_path}",
+            file=sys.stderr,
+        )
+        print(
+            "[配置] 里面是占位值（your-base-model / your-provider.example.com），"
+            "请打开控制台填两个槽位后点「保存并重启」。",
+            file=sys.stderr,
+        )
+
+    cfg = load_config(cfg_path)
     if args.host:
         cfg.server.host = args.host
     if args.port:
@@ -338,9 +487,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print(f"[配置]     单请求上限={cfg.guard.max_calls_per_turn} 每日={cfg.guard.daily_limit} 间隔={cfg.guard.min_interval_s}s")
         return 0
 
-    # 控制台要写回配置文件，所以得知道它在哪。load_config 里已经解析过一次，
-    # 这里按同样的规则再算一遍，避免两处口径不同。
-    cfg_path = Path(args.config).expanduser().resolve() if args.config else find_config()
     return asyncio.run(_serve_loop(cfg_path, args))
 
 
@@ -392,6 +538,16 @@ async def _serve_loop(cfg_path: Path, args: argparse.Namespace) -> int:
         if not first:
             _clear_env_overrides()
         cfg = load_config(cfg_path)
+        # 命令行覆盖必须在**每一轮**都重新盖上去。
+        #
+        # 之前只在 cmd_serve 里盖一次，而这一行把配置重新读了一遍 ——
+        # 覆盖被冲掉了。于是 `serve --port 27xxx` 悄悄用了配置文件里的端口，
+        # 用户以为自己换了端口、实际没换，端口冲突时更是完全摸不着头脑。
+        # 重启后同样要盖：重启的语义是「重读配置」，但命令行参数比配置优先。
+        if getattr(args, "host", None):
+            cfg.server.host = args.host
+        if getattr(args, "port", None):
+            cfg.server.port = args.port
         host, port = cfg.server.host, cfg.server.port
         shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
 
@@ -425,10 +581,16 @@ async def _serve_loop(cfg_path: Path, args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    cfg_path = Path(args.config).expanduser().resolve() if args.config else Path.cwd() / "config.yaml"
+    cfg_path = Path(args.config).expanduser().resolve() if args.config else find_config()
     if cfg_path.exists() and not args.force:
-        print(f"[init] {cfg_path} 已存在。要覆盖加 --force。", file=sys.stderr)
-        return 1
+        # 一份原封不动的模板不算「已有配置」—— 覆盖它不会丢用户数据。
+        # 不这么判的话，「先 serve 生成配置，再 init 配一遍」这条常见路线会被
+        # 一句「已存在，要覆盖加 --force」堵住，而 --force 看起来像危险操作。
+        if is_pristine_config(cfg_path):
+            print(f"[init] {cfg_path} 是刚生成的模板，直接覆盖。", file=sys.stderr)
+        else:
+            print(f"[init] {cfg_path} 已存在。要覆盖加 --force。", file=sys.stderr)
+            return 1
 
     print("\nsteward 初始化：先配两个模型槽位，再签发一把项目 key\n")
     print("  基础模型   日常主力，绝大多数请求由它完成。通常填本地部署的模型")
@@ -764,6 +926,21 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, help="覆盖监听端口")
     serve.add_argument("--check", action="store_true", help="只检查配置，不启动")
     serve.set_defaults(func=cmd_serve)
+
+    start = sub.add_parser(
+        "start",
+        help="本地正式启动入口：检查环境、准备配置、起服务（新手用这条）",
+    )
+    start.add_argument("-c", "--config", help="配置文件路径，默认 ./config.yaml")
+    start.add_argument("--root", help="工作目录，默认当前目录")
+    start.add_argument("--host", help="覆盖监听地址（局域网用 0.0.0.0）")
+    start.add_argument("--port", type=int, help="覆盖监听端口")
+    start.add_argument(
+        "--check",
+        action="store_true",
+        help="只做启动前检查（环境、依赖、配置），不真的起服务",
+    )
+    start.set_defaults(func=cmd_start)
 
     init = sub.add_parser("init", help="配两个模型槽位并签发项目 key")
     init.add_argument("-c", "--config", help="写入位置，默认 ./config.yaml")

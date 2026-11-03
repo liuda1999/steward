@@ -45,6 +45,10 @@ def _expand(value: Any) -> Any:
 #: 27418 三条都满足，而且不在任何常见服务清单里。
 DEFAULT_PORT = 27418
 
+#: 配置模板里的占位模型名。识别它是为了能对用户说「你还没填」，
+#: 而不是让请求去打一个不存在的模型、拿一个看不懂的 404。
+PLACEHOLDER_MODEL = "your-base-model"
+
 #: 这些端口在本机上几乎总有主，配置时给了就提醒一句。
 COMMON_PORTS = frozenset(
     {
@@ -292,6 +296,13 @@ class AppCfg:
                 f"进阶槽位空着（缺 advanced.{missing}）：consult_cloud 不注入，"
                 "本地模型拿不到外援，每轮也省下约 500 tokens 的工具定义"
             )
+        # 模板占位值。留着不拦 —— 网关起得来、用户能打开控制台去改，
+        # 但每一句「这是占位值」都比上游报一个 404 好。
+        if self.base.model == PLACEHOLDER_MODEL:
+            items.append(
+                f"base.model 还是模板占位值（{PLACEHOLDER_MODEL}）："
+                "打开控制台填上真实的模型标识，否则每次请求都会失败"
+            )
         # 两个槽位填成一样：进阶调用会打到和基础模型完全相同的端点。
         # 有时候这是故意的（用本地模型替代云端），但更多时候是复制粘贴。
         if (
@@ -345,6 +356,15 @@ def _pick(data: dict, *names: str) -> Any:
 
 
 def find_config() -> Path:
+    """决定用哪份配置。
+
+    优先级：`STEWARD_CONFIG` 环境变量 → 当前目录的 `config.yaml` →
+    当前目录的 `config.example.yaml` → 当前目录的 `config.yaml`（尚不存在）。
+
+    最后那一条不是兜底而是**首次启动的落点**：配置文件不存在时，
+    `serve` 会拿随包模板生成一份放在这儿。这样 `git clone` 之后第一次
+    `steward serve` 就能起来，而不是让用户先猜配置文件该放哪。
+    """
     env_path = os.environ.get("STEWARD_CONFIG")
     if env_path:
         return Path(env_path).expanduser().resolve()
@@ -353,6 +373,57 @@ def find_config() -> Path:
         if candidate.exists():
             return candidate
     return Path.cwd() / "config.yaml"
+
+
+def template_path() -> Path | None:
+    """随包配置模板的位置。
+
+    放在包目录里，`pip install` 之后照样找得到 —— 首次启动要靠它生成配置。
+    源码运行时是 `steward/config.example.yaml`。
+    """
+    candidate = Path(__file__).with_name("config.example.yaml")
+    return candidate if candidate.is_file() else None
+
+
+def ensure_config(target: Path) -> bool:
+    """目标配置不存在时，用随包模板生成一份。返回是否真的新建了。
+
+    为什么不直接读模板当配置用：模板里是占位值（`your-base-model`），
+    控制台改完要写回一份**可写**的配置。写回包目录的话，pip 装的包会被
+    改脏，而且多半没有写权限。所以一律复制到目标位置再改。
+    """
+    if target.exists():
+        return False
+    source = template_path()
+    if source is None:
+        return False
+    # 不往包目录里写。site-packages 只读是常态，写进去也是安装事故。
+    try:
+        if target.parent.resolve() == Path(__file__).parent.resolve():
+            return False
+    except OSError:
+        pass
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
+def is_pristine_config(path: Path) -> bool:
+    """这份配置是不是还没被改过（和模板逐字相同）。
+
+    `init` 拿它判断「能不能直接覆盖」：一份原封不动的模板被覆盖掉，
+    不算丢用户数据；但用户填过的配置被覆盖，就是丢数据。
+    """
+    source = template_path()
+    if source is None or not path.is_file():
+        return False
+    try:
+        return path.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+    except OSError:
+        return False
 
 
 def load_env_file(path: Path) -> None:

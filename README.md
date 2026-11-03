@@ -4,8 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-422%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.4.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-455%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > 本地模型是主力，云端是外援。steward 管这中间的一切：什么时候值得花钱、窗口装不装得下、档案怎么不把磁盘写满。
 > **打开 `http://127.0.0.1:27418/` 就是控制台** —— 填两个槽位的 API、调配额、签发项目 key，都不用碰命令行。
@@ -17,14 +17,14 @@
 
 | | |
 |---|---|
-| 版本 | **v1.4.0**（[发布说明](docs/releases/v1.4.0.md)） |
+| 版本 | **v1.5.0**（[发布说明](docs/releases/v1.5.0.md)） |
 | 许可证 | **Apache-2.0**（[LICENSE](LICENSE) · [NOTICE](NOTICE)）—— 可商用、可修改、可闭源分发，附专利授权 |
 | 形态 | 单进程 FastAPI 网关，无状态；同一端口带 Web 控制台 |
 | 默认端口 | 27418 |
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
 | 规模 | 5,824 行 Python（含注释），14 个模块 |
-| 测试 | 422 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 44 · 网络策略 7 · 云端参数 4 · 其余为各层单测与端到端 |
+| 测试 | 455 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 44 · 网络策略 7 · 云端参数 4 · 部署验收 33 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -185,22 +185,43 @@ next: 补 test_guard.py 的计量用例
 git clone https://github.com/liuda1999/steward.git
 cd steward
 
-# 1. 装依赖（Python 3.11+）
-pip install -r requirements.txt
-
-# 2. 启动（先用随包示例配置）
-python -m steward serve
-
-# 3. 打开 http://127.0.0.1:27418/ ，填两个槽位，保存，重启
+# 一条命令：检查环境 → 装依赖 → 生成配置 → 起服务
+./scripts/start.sh          # Windows：scripts/start.bat
 ```
 
-**推荐从控制台开始**，不用改 YAML：把地址、模型名、API key 填进去，点「测试连接」确认通，再点保存。密钥会写进同目录 `.env`（`config.yaml` 里只留 `${BASE_API_KEY}` 占位），配置文件的注释原样保留。
+它会逐项报进度，然后打印控制台地址和一次性口令：
+
+```
+  [1/4] Python 3.13.14  OK
+  [2/4] 依赖齐全  OK
+  [3/4] 首次启动，已生成配置：/path/to/steward/config.yaml
+  [4/4] 配置校验通过  OK
+
+  端点 http://127.0.0.1:27418/v1
+  控制台 http://127.0.0.1:27418/  （填槽位、改配额、签发 key）
+  口令   xxxxxxxxxxxxxxxx
+```
+
+**接着打开 <http://127.0.0.1:27418/>，输入口令，把两个槽位填上，点「保存并重启」。**
+
+进阶槽位**留空即可** —— 空着就不注入 `consult_cloud`，每轮少发约 500 tokens，
+也不会误调云端。先用纯本地跑通，再决定要不要接云端。
+
+> 首次启动会在当前目录生成 `config.yaml`（内容来自随包模板）。所以
+> `git clone` 之后不需要先建配置文件 —— 之前这一步得自己猜，是最容易卡住的一步。
 
 命令行也留着，两种方式等价：
 
 ```bash
 python -m steward init          # 交互式向导，适合一次配完
 python -m steward serve --check # 只校验配置，不启动
+```
+
+装成全局命令（可选，之后直接敲 `steward`）：
+
+```bash
+pip install -e .
+steward serve
 ```
 
 没有本地模型也能先跑起来看个究竟——把两个 `base_url` 都填任意 OpenAI 兼容端点即可，`python -m steward test` 会告诉你通不通。
@@ -222,6 +243,11 @@ api_key  = "st-..."                 # init 时打印过一次，之后只存 has
 **key 只在签发时显示一次。** 丢了就重新签发、吊销旧的 —— 网关只存 hash，找不回来。控制台的「项目 key」一节可以签发和吊销，同样是只显示一次。
 
 改造后第一次连客户端，建议先跑一遍 `python -m steward ctx`：它会把真实窗口、输入预算、计数方式全打出来。很多"模型忽然变笨"的问题，从这三个数字就能看出来。
+
+### 4.0 部署与运维
+
+局域网共享、开机自启、systemd / 计划任务、升级流程、排错对照表，都在
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** 里。只想跑起来的话，上面这一段就够了。
 
 ### 4.1 端口
 
@@ -414,21 +440,27 @@ python -m steward serve
 │   ├── webconsole.py          Web 控制台：路由、配置写盘、会话
 │   ├── web/console.html       控制台页面（单文件，零外部依赖）
 │   ├── server.py              FastAPI 路由、鉴权、工具循环
-│   ├── __main__.py            serve / init / test / key / ctx / refs / artifacts
+│   ├── __main__.py            start / serve / init / test / key / ctx / refs / artifacts
 │   ├── envfile.py             .env 的读写（init 与控制台共用）
 │   ├── netpolicy.py           网络策略：本机直连，公网走代理
+│   ├── config.example.yaml    配置模板（首次启动据此生成 config.yaml）
 │   └── README.md              实现细节与排错手册
-├── docs/                        三张图，由 scripts/gen_diagrams.py 生成
-├── scripts/                     联调、真机验证、图生成、推送
+├── docs/                        三张图（gen_diagrams.py 生成）+ 部署手册
+│   ├── DEPLOYMENT.md            部署与启动：本地、局域网、开机自启、升级、排错
+│   └── releases/                各版本发布说明
+├── scripts/                     启动脚本、联调、真机验证、图生成、推送
+│   ├── start.sh / start.bat      正式启动入口（检查环境 → 备配置 → 起服务）
 │   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
-├── tests/                       422 个用例
+├── tests/                       455 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
+├── pyproject.toml               打包元数据：装完有 steward 命令
 ├── ARCHITECTURE.md              架构决策与被否掉的方案
 ├── CONTEXT-DESIGN.md            上下文治理的设计论证
 ├── HANDOFF-PROTOCOL.md          委托单与交付物格式的原始定义
 │
 ├── state/                       运行时状态（不进仓库）
+├── config.yaml                  本地配置（首次启动自动生成，不进仓库）
 └── .steward/artifacts/          交付物与工具输出存档（不进仓库，可用 CLI 回收）
 ```
 
@@ -438,7 +470,8 @@ python -m steward serve
 
 | 命令 | 用途 |
 |---|---|
-| `python -m steward serve` | 启动网关 |
+| `python -m steward start` | **正式启动入口**：检查环境 → 备配置 → 起服务（推荐新手用这条） |
+| `python -m steward serve` | 直接启动网关 |
 | `python -m steward init` | 交互式配置两个槽位并签发首把 key |
 | `python -m steward test` | 测两个端点连通性 |
 | `python -m steward ctx` | 看真实窗口 / 预算 / 计数方式 |
@@ -517,7 +550,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 422 个
+python -m pytest tests -q                    # 455 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```
@@ -546,6 +579,7 @@ python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨�
 
 | 文档 | 内容 |
 |---|---|
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | **部署与启动**：本地启动、局域网共享、开机自启、升级、排错对照表 |
 | `steward/README.md` | 实现细节：每个模块怎么工作、每个参数什么含义、排错对照表 |
 | `ARCHITECTURE.md` | 为什么这样设计：决策过程与被否掉的方案 |
 | `CONTEXT-DESIGN.md` | 窗口问题的完整分析与 L0–L5 设计论证，含 P0–P3 落地记录 |

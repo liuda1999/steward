@@ -87,7 +87,7 @@ def test_shipped_yaml_uses_the_safe_default():
     """随包配置也得守规矩，否则 init 出来的就是 8080。"""
     from pathlib import Path
 
-    text = (Path(__file__).resolve().parents[1] / "steward" / "config.yaml").read_text(encoding="utf-8")
+    text = (Path(__file__).resolve().parents[1] / "steward" / "config.example.yaml").read_text(encoding="utf-8")
     assert f"port: {DEFAULT_PORT}" in text
     assert "8010" not in text
 

@@ -87,7 +87,7 @@ python -m steward serve --port 27418
 ## 三步跑起来
 
 ```bash
-# 1. 装依赖
+# 1. 装依赖（或者直接 pip install -e .，装完有 steward 命令）
 python -m pip install -r requirements.txt
 
 # 2. 初始化：先配基础模型，再配进阶模型，最后签发项目 key
@@ -97,7 +97,17 @@ python -m steward init
 python -m steward serve
 ```
 
+或者一条命令走完（检查环境 → 生成配置 → 起服务）：
+
+```bash
+./scripts/start.sh          # Windows: scripts\start.bat
+```
+
 `init` 会依次问：基础模型的地址/模型/key → 进阶模型的地址/模型/key/每日上限 → **自动探测该用哪种协议** → 写 `config.yaml` → 上游 key 写进同目录 `.env` → 签发项目 key 并打印。**那串 `st-...` 只出现这一次。**
+
+> `init` 之前不用手动建 `config.yaml`。`serve` / `start` 在找不到配置时，
+> 会用随包的 `steward/config.example.yaml` 生成一份当前目录下的 `config.yaml`
+> —— 里面是占位值，要在控制台里换成真实的模型标识。
 
 智能体里这样填：
 

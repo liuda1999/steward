@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# 打包元数据。存在的理由：没有它，`pip install -e .` 直接失败，
+# "正式入口"就只剩 `python -m steward` 这一种手敲命令。
+#
+# 名字说明：PyPI 上 `steward` 这个名字已被别人占用（一个 asyncio 库），
+# 所以发行名用 `steward-gateway`，但命令行入口仍然叫 `steward`——
+# 用户敲的是 `steward serve`，不是 `steward-gateway serve`。
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "steward-gateway"
+version = "1.5.0"
+description = "本地模型管家：两个模型槽位，对外一把 key，管账 / 管窗 / 管档案"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "liuda1999" }]
+keywords = ["llm", "gateway", "openai-compatible", "context-window", "quota", "local-llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+
+# 用 SPDX 表达式而不是老的 License 类目：后者已被 setuptools 标记为废弃，
+# 每次构建都会刷一屏警告。许可证文本本身在 LICENSE / NOTICE 里。
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+
+# 与 requirements.txt 保持一致，tests/test_deploy.py 会盯着这件事：
+# 两份依赖清单漂移的话，requirements.txt 装出来的环境和 pip 装出来的
+# 环境会不一样，而"本地能跑、装完不能跑"是最难查的一类问题。
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/liuda1999/steward"
+Repository = "https://github.com/liuda1999/steward"
+Issues = "https://github.com/liuda1999/steward/issues"
+
+# 正式的启动入口。装完之后 `steward serve` 就是那条命令，
+# 不再需要记住 `python -m steward`。
+[project.scripts]
+steward = "steward.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["steward*"]
+
+[tool.setuptools.package-data]
+# console.html 是控制台的整个界面，漏了它装完就是一个空白页。
+# config.example.yaml 是配置模板，控制台"另存为模板"和首次引导都指着它。
+steward = ["web/*.html", "config.example.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

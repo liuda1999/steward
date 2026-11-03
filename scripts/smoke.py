@@ -24,7 +24,7 @@ from steward.server import create_app  # noqa: E402
 
 def main() -> int:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 27419
-    cfg = load_config(ROOT / "steward" / "config.yaml")
+    cfg = load_config(ROOT / "steward" / "config.example.yaml")
     cfg.base.model = cfg.base.model or "smoke-base"
     cfg.advanced.model = cfg.advanced.model or "smoke-advanced"
     cfg.advanced.base_url = cfg.advanced.base_url or "http://127.0.0.1:1/v1"
