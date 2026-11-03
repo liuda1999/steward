@@ -70,7 +70,7 @@ def main() -> int:
     parser.add_argument("--key", default="")
     parser.add_argument("--protocol", choices=["chat", "responses"], default="chat")
     parser.add_argument("--thinking", choices=["auto", "off", "on"], default="off")
-    parser.add_argument("--port", type=int, default=18030)
+    parser.add_argument("--port", type=int, default=27420)
     args = parser.parse_args()
 
     cfg = build_cfg(args)
