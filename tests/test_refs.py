@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """refs：本地文件引用。
 
 重点不在「能读」，在「读不到什么」。一半以上的用例是拒绝路径。

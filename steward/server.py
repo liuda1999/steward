@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """OpenAI 兼容的本地模型网关。
 
 对外只有一个端口、一个端点。客户端（任意智能体）把 base_url 指过来即可，

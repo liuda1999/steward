@@ -1,0 +1,16 @@
+steward
+Copyright 2026 刘鸿祥 (liuda1999)
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file for the full text.
+
+---
+
+第三方组件
+
+本项目在运行时不打包任何第三方代码，依赖由使用者自行安装：
+
+  fastapi / uvicorn / httpx / PyYAML —— 各自遵循其原有许可证
+
+本项目不包含任何模型权重。你接入的本地或云端模型，
+其许可证由该模型的提供方决定，与本项目无关。

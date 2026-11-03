@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """配置加载：YAML + 环境变量展开。
 
 优先级：命令行 > 环境变量 > config.yaml > 内置默认值。

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """拿真实本地模型跑一遍完整链路，不产生云端费用。
 
 用法：

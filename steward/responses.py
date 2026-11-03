@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """OpenAI Responses 协议 <-> Chat Completions 协议互转。
 
 有些上游只暴露 /v1/responses（新版 llama.cpp、vLLM、OpenAI 官方）。

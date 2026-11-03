@@ -1,5 +1,12 @@
 # steward
 
+**简体中文** | [English](README.en.md)
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/tests-354%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.1.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+
 > 本地模型是主力，云端是外援。steward 管这中间的一切：什么时候值得花钱、窗口装不装得下、档案怎么不把磁盘写满。
 
 ```
@@ -9,13 +16,14 @@
 
 | | |
 |---|---|
-| 版本 | **v1.0.0**（[发布说明](docs/releases/v1.0.0.md)）· MIT |
+| 版本 | **v1.1.0**（[发布说明](docs/releases/v1.1.0.md)） |
+| 许可证 | **Apache-2.0**（[LICENSE](LICENSE) · [NOTICE](NOTICE)）—— 可商用、可修改、可闭源分发，附专利授权 |
 | 形态 | 单进程 FastAPI 网关，无状态 |
 | 默认端口 | 27418 |
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
 | 规模 | 5,824 行 Python（含注释），14 个模块 |
-| 测试 | 345 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 其余为各层单测与端到端 |
+| 测试 | 354 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -277,7 +285,7 @@ python -m steward serve --check -c config.yaml
 ├── docs/                        三张图，由 scripts/gen_diagrams.py 生成
 ├── scripts/                     联调、真机验证、图生成、推送
 │   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
-├── tests/                       345 个用例
+├── tests/                       354 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
 ├── ARCHITECTURE.md              架构决策与被否掉的方案
@@ -326,7 +334,6 @@ STEWARD_GH_TOKEN=xxx python scripts/publish.py -m "说明"  # 提交并推
 ```
 
 令牌只从环境变量或 `--token` 读，不落盘。
-| `python -m steward artifacts` | 看存档占用，`--clean` 按策略回收 |
 
 ---
 
@@ -374,7 +381,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 345 个
+python -m pytest tests -q                    # 354 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```
@@ -407,6 +414,7 @@ python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨�
 | `ARCHITECTURE.md` | 为什么这样设计：决策过程与被否掉的方案 |
 | `CONTEXT-DESIGN.md` | 窗口问题的完整分析与 L0–L5 设计论证，含 P0–P3 落地记录 |
 | `HANDOFF-PROTOCOL.md` | BRIEF 委托单与四段式交付物的原始定义，`prompts.py` 是它的简化实现 |
+| `README.en.md` | 本文的英文版，内容对等 |
 
 **`legacy/`：两代前身的存档**
 
@@ -436,3 +444,24 @@ python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨�
 **存档不加密。** 落盘的是完整交付物和工具原始输出，可能含源码片段。目录权限跟着网关进程的 umask 走。
 
 **Windows 上 `chmod 0600` 是空操作**（`keys.json` 走默认 ACL），但文件里只有 hash，拿到也还原不出 key。**`state/usage.json` 假定单进程**，两个实例指向同一文件会互相覆盖计数。
+
+---
+
+## 十一、许可证
+
+**Apache License 2.0。** 全文见 [LICENSE](LICENSE)，版权与第三方说明见 [NOTICE](NOTICE)。
+
+选它而不是 MIT，只因为一个实际差别：**专利授权**。这个项目会对接各类模型服务和推理框架，使用者可能身处有专利组合的公司。MIT 对专利是沉默的——沉默不等于安全，等于让每个使用者的法务自己猜。Apache-2.0 把话说清楚了：贡献者授予你使用其必要专利的许可，同时如果你对项目发起专利诉讼，这份许可自动终止。
+
+你可以用它做什么：
+
+| | |
+|---|---|
+| 商用 | 可以，不需要付费、不需要告知 |
+| 修改 | 可以，不需要开源你的修改 |
+| 闭源分发 | 可以，把网关嵌进内部系统或商业产品都行 |
+| 私有部署 | 可以，不限设备数 |
+
+需要遵守的只有三条：保留 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)、修改过的文件要说明「已修改」、不得使用项目名称背书你的衍生品（商标权不在授权范围内）。
+
+源码文件开头都有 `SPDX-License-Identifier: Apache-2.0`，便于工具链自动识别。

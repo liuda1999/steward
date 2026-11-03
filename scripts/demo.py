@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """真实链路联调：假本地模型 + 假云端 + steward，全部走真实 HTTP。
 
 用法：python scripts/demo.py

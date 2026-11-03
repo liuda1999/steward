@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """测试夹具覆盖。
 
 pytest 默认的 `tmp_path` 由 `tmp_path_factory` 管理：会话开始时清空旧目录、

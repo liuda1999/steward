@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """python -m steward [serve|init|test|key|ctx]
 
 serve  启动网关（默认）

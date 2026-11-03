@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """进阶模型客户端（通常是云端 API）+ 交付物解析。"""
 
 from __future__ import annotations

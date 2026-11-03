@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Responses 协议互转。"""
 
 from __future__ import annotations

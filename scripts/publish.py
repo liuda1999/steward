@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """把本地提交推到 GitHub，不挑环境。
 
 为什么需要这个脚本，而不是直接 `git push`：

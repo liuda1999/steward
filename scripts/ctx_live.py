@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """拿真实本地端点验证上下文治理层，不产生云端费用。
 
   python scripts/ctx_live.py                 探测窗口 + 小样本估算校准（几秒）

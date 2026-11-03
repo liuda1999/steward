@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """注入文本与工具定义。
 
 设计取舍：规则写进工具 description，不写进 system prompt。

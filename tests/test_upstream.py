@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """上游客户端：404 自愈、协议分发。"""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """基础模型客户端（OpenAI 兼容，支持 chat 与 responses 两种协议）。
 
 带一个"404 自愈"：某些 llama.cpp 部署在 keep-alive 连接上会把第 2、4… 个请求

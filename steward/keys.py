@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """项目自有 API Key 的签发与校验。
 
 这套东西对外只暴露一把自己签的 key，上游的本地 key 和云端 key 都锁在里面：

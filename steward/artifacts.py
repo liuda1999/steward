@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """交付物外置：全文落盘，上下文只留摘要 + 目录 + 路径。
 
 为什么值得单独做一层：一次 consult 的交付物 16K 字符 ≈ 11K tokens，作为

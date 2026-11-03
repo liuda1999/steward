@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """refs 的端到端：真的走一遍网关，看文件有没有进云端、有没有留在本地。"""
 
 from __future__ import annotations

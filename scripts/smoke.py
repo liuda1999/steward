@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """真实进程冒烟：起 uvicorn，打 /health 和 /v1/models，然后退出。
 
 用法：python scripts/smoke.py [端口]

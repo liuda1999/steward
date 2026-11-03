@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """骨架的端到端验证：裁剪发生后，模型收到的 system 里到底有没有那六行。
 
 单元测试只能证明 parse/inject 是对的，证明不了它真的被接进请求。

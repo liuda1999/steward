@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """生成项目文档用的三张图：拓扑图 / 结构图 / 流程图。
 
 为什么不用 Mermaid：它依赖查看器支持（GitHub 行，很多本地预览不行）。
