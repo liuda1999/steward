@@ -112,6 +112,8 @@ The first run writes `config.yaml` into the current directory from the bundled t
 
 Open <http://127.0.0.1:27418/>, paste the token, fill the two slots, and hit "save and restart". Each slot has a "test connection" button that reads the upstream `/v1/models` and lists the real model names — click one to fill it in.
 
+If it will not open: check the port printed in the startup banner (it is not 27418 once you change `server.port` or pass `--port`). If the port is confirmed listening but the page keeps spinning, a browser proxy is probably intercepting localhost — see troubleshooting 6.3 in [DEPLOYMENT](docs/DEPLOYMENT.md).
+
 Prefer the CLI:
 
 ```bash
@@ -166,6 +168,8 @@ The token is printed at startup and stored in `state/console.token`. Saving rewr
 | Only `advanced` | Will not start — with no base model there is nothing to serve |
 
 An empty slot is deliberately legal: "I only have one local model" is the common case.
+
+**The two slots are equals, and `base` does not have to be a vendor's official model.** Put an uncensored or abliterated local model there and everyday conversation never leaves the machine — no egress, no per-token bill — while the cloud is used only when deep reasoning is genuinely needed, at the model's request and with the gateway's approval. The gateway does not filter content or make compliance decisions for you: which model you run, and what you are responsible for, is up to the operator.
 
 ### 4.3 Model identifiers
 
