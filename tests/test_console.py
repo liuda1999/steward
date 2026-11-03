@@ -219,10 +219,24 @@ def test_set_in_text_leaves_other_sections_alone():
     assert "b:\n  v: 20" in out
 
 
-def test_set_in_text_missing_key_is_noop():
-    """找不到就原样返回：调用方靠"写盘前校验"发现没生效，而不是把文件改坏。"""
+def test_set_in_text_adds_missing_key():
+    """段里没有这个键要补一行，不是静默放弃。
+
+    旧配置缺的字段（比如 timeout_s）如果只能改已有的键，界面上填了却
+    没反应，用户只能靠猜。
+    """
+    text = "a:\n  v: 1\n\nb:\n  w: 2\n"
+    out = set_in_text(text, "a", "nope", 2)
+    assert "  nope: 2" in out
+    assert out.index("nope: 2") < out.index("b:")  # 补在 a 段里，没跑到 b 段去
+    import yaml
+
+    assert yaml.safe_load(out) == {"a": {"v": 1, "nope": 2}, "b": {"w": 2}}
+
+
+def test_set_in_text_missing_section_is_noop():
+    """连这个段都没有就不乱加：交给写盘前校验去报错。"""
     text = "a:\n  v: 1\n"
-    assert set_in_text(text, "a", "nope", 2) == text
     assert set_in_text(text, "nope", "v", 2) == text
 
 
@@ -530,3 +544,59 @@ def test_foreign_origin_is_rejected_even_with_valid_token(tmp_path):
     )
     assert status == 403
     assert "来源" in body["error"]
+
+
+# ---------------------------------------------------------------- 超时与槽位提示
+
+
+def test_timeout_is_editable_from_the_console(tmp_path):
+    """超时必须能在界面上改 —— 用户最怕的就是「不知道会不会超时」。"""
+    app, cfg_path, console = make_app(tmp_path)
+    status, body = call(
+        app,
+        "post",
+        "/console/api/save",
+        {"values": {"advanced": {"timeout_s": 300}}},
+        token=console.token,
+        use_header=True,
+    )
+    assert status == 200, body
+    assert "timeout_s: 300" in cfg_path.read_text(encoding="utf-8")
+
+
+def test_state_reports_timeouts(tmp_path):
+    app, _, console = make_app(tmp_path)
+    status, body = call(app, "get", "/console/api/state", token=console.token, use_header=True)
+    assert status == 200
+    assert body["data"]["slots"]["advanced"]["timeout_s"] > 0
+
+
+def test_identical_slots_are_flagged(tmp_path):
+    """两个槽位填成一样，多半是复制粘贴 —— 得说一声。"""
+    from steward.config import config_from_dict
+
+    cfg = config_from_dict({
+        "base": {"base_url": "http://x/v1", "model": "m"},
+        "advanced": {"base_url": "http://x/v1", "model": "m"},
+    })
+    assert any("同一个模型" in w for w in cfg.warnings())
+
+
+def test_short_timeout_is_flagged(tmp_path):
+    from steward.config import config_from_dict
+
+    cfg = config_from_dict({
+        "base": {"base_url": "http://x/v1", "model": "m", "timeout_s": 20},
+        "advanced": {"base_url": "http://y/v1", "model": "n"},
+    })
+    assert any("timeout_s" in w for w in cfg.warnings())
+
+
+def test_different_slots_are_not_flagged(tmp_path):
+    from steward.config import config_from_dict
+
+    cfg = config_from_dict({
+        "base": {"base_url": "http://x/v1", "model": "m"},
+        "advanced": {"base_url": "http://y/v1", "model": "n"},
+    })
+    assert not any("同一个模型" in w for w in cfg.warnings())

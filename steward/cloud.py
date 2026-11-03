@@ -12,6 +12,7 @@ import httpx
 from .artifacts import Artifact, Store
 from .config import EndpointCfg
 from .prompts import CONSULT_SYSTEM_PROMPT, render_brief
+from .netpolicy import client_kwargs
 from .responses import chat_to_responses, responses_to_chat
 from .upstream import build_headers, join_url
 
@@ -61,6 +62,8 @@ class AdvancedClient:
             headers=headers,
             transport=self._transport,
             limits=httpx.Limits(max_keepalive_connections=0) if self._force_close else httpx.Limits(),
+            # 本机/内网直连：环境代理会把「连不上」伪装成「超时」
+            **client_kwargs(self.cfg.base_url),
         )
 
     async def _post(self, url: str, body: dict):

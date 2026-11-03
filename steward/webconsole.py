@@ -56,8 +56,8 @@ PAGE = Path(__file__).resolve().parent / "web" / "console.html"
 #: 界面上可以改的字段：段名 → {键: 类型}
 #: 类型只影响前端控件和写盘时的序列化，不做额外校验（校验交给 AppCfg.validate）。
 EDITABLE: dict[str, dict[str, str]] = {
-    "base": {"base_url": "str", "model": "str", "protocol": "str", "thinking": "str"},
-    "advanced": {"base_url": "str", "model": "str", "protocol": "str", "thinking": "str"},
+    "base": {"base_url": "str", "model": "str", "protocol": "str", "thinking": "str", "timeout_s": "float"},
+    "advanced": {"base_url": "str", "model": "str", "protocol": "str", "thinking": "str", "timeout_s": "float"},
     "guard": {"max_calls_per_turn": "int", "daily_limit": "int", "min_interval_s": "int"},
     "context": {"ctx_limit": "int", "target_ratio": "float", "spine": "bool"},
     "artifacts": {"max_age_days": "int", "max_total_mb": "int"},
@@ -187,21 +187,34 @@ _VALUE_WITH_COMMENT = re.compile(r"^(?P<head>\s*(?P<key>[A-Za-z_][\w-]*)\s*:\s*)
 def set_in_text(text: str, section: str, key: str, value: Any) -> str:
     """在 YAML 文本里改一个值，保留缩进、注释、空行和别的字段顺序。
 
-    找不到就返回原文本 —— 调用方会通过「写盘前校验」发现没生效，
-    而不是把文件改坏。
+    段里没有这个键时**补一行**而不是放弃 —— 旧配置里缺的字段（比如
+    timeout_s）如果只能改已有的键，界面上填了却静默无效，用户只能靠猜。
+    补出来的行放在该段末尾，缩进跟同段其它键一致。
     """
     lines = text.splitlines()
     in_section = False
+    section_start = -1
+    section_end = len(lines)
+    indent_hint = "  "
+
     for i, line in enumerate(lines):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         indent = len(line) - len(line.lstrip())
 
-        if indent == 0 and stripped.endswith(":") or (indent == 0 and re.match(r"^[A-Za-z_][\w-]*:", stripped)):
+        if indent == 0 and (stripped.endswith(":") or re.match(r"^[A-Za-z_][\w-]*:", stripped)):
             name = stripped.split(":", 1)[0].strip()
+            if in_section:
+                section_end = i
+                break
             in_section = name == section
+            if in_section:
+                section_start = i
             continue
+        if in_section and indent > 0:
+            indent_hint = " " * indent
+
         if not in_section or indent == 0:
             continue
 
@@ -212,7 +225,15 @@ def set_in_text(text: str, section: str, key: str, value: Any) -> str:
         comment = m.group("comment") or ""
         lines[i] = f"{head}{_scalar(value)}{comment}"
         return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
-    return text
+
+    # 段里没有这个键：补一行
+    if section_start < 0:
+        return text  # 连这个段都没有 —— 不乱加，交给写盘前校验去报错
+    insert_at = section_end
+    while insert_at > section_start + 1 and not lines[insert_at - 1].strip():
+        insert_at -= 1
+    lines.insert(insert_at, f"{indent_hint}{key}: {_scalar(value)}")
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
 def _section_dict(data: dict, name: str) -> dict:
@@ -358,6 +379,7 @@ def public_state(cfg: AppCfg, cfg_path: Path, env_path: Path, keys: KeyStore) ->
             "thinking": ep.thinking,
             "has_key": bool(ep.api_key) or bool(on_disk.get(env_name)),
             "configured": bool(ep.base_url and ep.model),
+            "timeout_s": ep.timeout_s,
         }
 
     data = {

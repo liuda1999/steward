@@ -13,6 +13,7 @@ import logging
 import httpx
 
 from .config import EndpointCfg
+from .netpolicy import client_kwargs
 from .responses import chat_to_responses, responses_to_chat
 
 logger = logging.getLogger("steward")
@@ -47,6 +48,8 @@ class BaseClient:
             headers=headers,
             transport=self._transport,
             limits=httpx.Limits(max_keepalive_connections=0) if self._force_close else httpx.Limits(),
+            # 本机/内网直连，别让环境代理把请求劫走
+            **client_kwargs(self.cfg.base_url),
         )
 
     async def _send(self, payload: dict) -> dict:
@@ -106,7 +109,7 @@ def probe(ep: EndpointCfg, timeout: float = 10.0) -> dict:
     base = ep.base_url.rstrip("/")
 
     try:
-        resp = httpx.get(f"{base}/models", headers=headers, timeout=timeout)
+        resp = httpx.get(f"{base}/models", headers=headers, timeout=timeout, **client_kwargs(base))
     except httpx.HTTPError as exc:
         info["detail"] = f"{type(exc).__name__}: {exc}"
         return info
@@ -134,7 +137,7 @@ def probe(ep: EndpointCfg, timeout: float = 10.0) -> dict:
 
     # llama.cpp 的 /props：上下文、槽位
     try:
-        props = httpx.get(f"{_root_of(base)}/props", headers=headers, timeout=timeout)
+        props = httpx.get(f"{_root_of(base)}/props", headers=headers, timeout=timeout, **client_kwargs(base))
         if props.status_code < 400:
             body = props.json()
             gen = body.get("default_generation_settings") or {}

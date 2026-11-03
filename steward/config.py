@@ -292,6 +292,24 @@ class AppCfg:
                 f"进阶槽位空着（缺 advanced.{missing}）：consult_cloud 不注入，"
                 "本地模型拿不到外援，每轮也省下约 500 tokens 的工具定义"
             )
+        # 两个槽位填成一样：进阶调用会打到和基础模型完全相同的端点。
+        # 有时候这是故意的（用本地模型替代云端），但更多时候是复制粘贴。
+        if (
+            self.base.base_url
+            and self.base.model
+            and self.base.base_url == self.advanced.base_url
+            and self.base.model == self.advanced.model
+        ):
+            items.append(
+                f"两个槽位指向同一个模型（{self.base.model} @ {self.base.base_url}）："
+                "进阶调用会打到和基础模型一样的端点。用本地模型替代云端时这是有意的，否则多半是复制粘贴"
+            )
+        for name, ep in (("base", self.base), ("advanced", self.advanced)):
+            if ep.base_url and ep.timeout_s < 60:
+                items.append(
+                    f"{name}.timeout_s={ep.timeout_s:g} 秒偏短：模型慢的时候容易白等到超时，"
+                    "而请求已经发出去了，额度不会退回"
+                )
         port = int(self.server.port)
         if port in COMMON_PORTS:
             items.append(

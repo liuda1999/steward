@@ -140,13 +140,16 @@
 
   <!-- 主体 -->
   <div id="app" class="hidden">
+    <div class="banner warn hidden" id="warnings"></div>
     <div class="banner warn hidden" id="restartBar"></div>
 
     <div class="grid2">
       <section class="card slot-base">
-        <div class="slot-head"><strong>基础模型</strong><span class="tag">日常主力 · 大部分请求走这里</span></div>
+        <div class="slot-head"><strong>基础模型</strong><span class="tag">槽位一 · 日常主力 · 大部分请求走这里</span></div>
         <div class="row"><label>地址</label><input type="text" data-f="base.base_url" placeholder="http://127.0.0.1:11434/v1"></div>
-        <div class="row"><label>模型标识</label><input type="text" data-f="base.model" placeholder="qwen3:8b / /models/x.gguf"></div>
+        <div class="row"><label>模型标识</label><input type="text" data-f="base.model" placeholder="qwen3:8b（Ollama）/ /models/x.gguf（llama.cpp）">
+          <span class="hint">本地模型：填模型名或 GGUF 路径，取决于你的服务怎么暴露。</span>
+        </div>
         <div class="row"><label>上游 key</label><input type="password" data-f="base.api_key" placeholder="留空＝不改"></div>
         <div class="row"><label>协议</label>
           <select data-f="base.protocol"><option value="chat">chat</option><option value="responses">responses</option></select>
@@ -154,19 +157,27 @@
         <div class="row"><label>thinking</label>
           <select data-f="base.thinking"><option value="off">off（推理型模型建议）</option><option value="auto">auto</option><option value="on">on</option></select>
         </div>
+        <div class="row"><label>超时（秒）</label><input type="number" min="5" data-f="base.timeout_s">
+          <span class="hint">等多久算失败。本地模型长上下文首字慢，给足；超时后额度不退（请求已经发出去了）。</span>
+        </div>
         <div class="actions"><button data-test="base">测试连接</button><span class="out" id="out-base"></span></div>
       </section>
 
       <section class="card slot-advanced">
-        <div class="slot-head"><strong>进阶模型</strong><span class="tag">按次计费 · 只在模型申请时调用</span></div>
+        <div class="slot-head"><strong>进阶模型</strong><span class="tag">槽位二 · 按次计费 · 只在模型申请时调用</span></div>
         <div class="row"><label>地址</label><input type="text" data-f="advanced.base_url" placeholder="https://api.example.com/v1"></div>
-        <div class="row"><label>模型标识</label><input type="text" data-f="advanced.model" placeholder="your-model"></div>
+        <div class="row"><label>模型标识</label><input type="text" data-f="advanced.model" placeholder="gpt-4o-mini / claude-3-5-haiku">
+          <span class="hint">云端模型：填服务商认的模型名，和基础槽位填一样的名字也不会串。</span>
+        </div>
         <div class="row"><label>上游 key</label><input type="password" data-f="advanced.api_key" placeholder="留空＝不改"></div>
         <div class="row"><label>协议</label>
           <select data-f="advanced.protocol"><option value="chat">chat</option><option value="responses">responses</option></select>
         </div>
         <div class="row"><label>thinking</label>
           <select data-f="advanced.thinking"><option value="auto">auto</option><option value="off">off</option><option value="on">on</option></select>
+        </div>
+        <div class="row"><label>超时（秒）</label><input type="number" min="5" data-f="advanced.timeout_s">
+          <span class="hint">云端慢就调大。连接失败会退额度；已经连上但没等到结果，不退。</span>
         </div>
         <div class="actions"><button data-test="advanced">测试连接</button><span class="out" id="out-advanced"></span></div>
         <p class="hint" style="margin-top:6px">整段留空就是纯本地模式：不注入 <code>consult_cloud</code>，每轮省下约 500 tokens。</p>
@@ -325,10 +336,12 @@ const render = (s) => {
   setField("base.model", s.slots.base.model);
   setField("base.protocol", s.slots.base.protocol);
   setField("base.thinking", s.slots.base.thinking);
+  setField("base.timeout_s", s.slots.base.timeout_s);
   setField("advanced.base_url", s.slots.advanced.base_url);
   setField("advanced.model", s.slots.advanced.model);
   setField("advanced.protocol", s.slots.advanced.protocol);
   setField("advanced.thinking", s.slots.advanced.thinking);
+  setField("advanced.timeout_s", s.slots.advanced.timeout_s);
   for (const f of ["max_calls_per_turn", "daily_limit", "min_interval_s"]) setField("guard." + f, s.guard[f]);
   setField("context.ctx_limit", s.context.ctx_limit);
   setField("context.target_ratio", s.context.target_ratio);
@@ -343,6 +356,14 @@ const render = (s) => {
   // 密钥只回报「有没有」，占位提示要能看出状态
   document.querySelector('[data-f="base.api_key"]').placeholder = s.slots.base.has_key ? "已设置（留空＝不改）" : "未设置";
   document.querySelector('[data-f="advanced.api_key"]').placeholder = s.slots.advanced.has_key ? "已设置（留空＝不改）" : "未设置";
+
+  const warn = $("#warnings");
+  if (s.warnings && s.warnings.length) {
+    warn.classList.remove("hidden");
+    warn.innerHTML = s.warnings.map(w => "• " + w).join("<br>");
+  } else {
+    warn.classList.add("hidden");
+  }
 
   if (s.env_exists) document.querySelector("#saveMsg").textContent = "";
 };

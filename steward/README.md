@@ -395,6 +395,21 @@ python -m steward artifacts --clean      # 真删
 
 回收在启动和每次写入后自动跑（受 `clean_interval_s` 节流），CLI 只是手动入口。
 
+## 网络策略：本机直连，公网走代理
+
+`httpx` 默认 `trust_env=True`，会照着 `HTTP_PROXY` / `HTTPS_PROXY` 发请求。机器上设了代理时（本机就有），本机与内网地址也会被送给代理。
+
+后果很误导人：代理转发不动时**连接失败被伪装成超时** —— 你以为「模型启动慢」，实际是「模型根本没启动」。实测一个没人听的端口，从「立刻 refused」变成「等满超时」。
+
+所以规则是：
+
+| 地址 | 走不走代理 |
+|---|---|
+| 回环、RFC1918 私网、`.local` / `.localhost` / `.localdomain` | **直连**（`trust_env=False`） |
+| 公网地址 | 照旧读环境代理，企业网关与 CA 都不受影响 |
+
+实现在 `steward/netpolicy.py`，`upstream.py` 与 `cloud.py` 的客户端都走它。
+
 ## 让云端读本地文件（refs）
 
 交付物是"出"，refs 是"进"。
@@ -548,6 +563,7 @@ X-Steward-Rounds: 3      基础模型循环了几轮
 X-Steward-Ctx: used=68926 budget=106803 saved=90313   末轮实际发送 / 预算 / 省下多少
 X-Steward-Truncated: 1   检测到上游静默截断（只在真发生时出现）
 X-Steward-Refs: 3        本次随委托附上的本地文件数（只在 refs 真读了东西时出现）
+X-Steward-Cloud-Ms: 8200 这一轮进阶模型实际花的毫秒（只在真调用过时出现）—— 校准超时靠它
 ```
 
 ## 参数

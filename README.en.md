@@ -4,8 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-387%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.2.1-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-413%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.3.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > Your local model is the workhorse; the cloud is the specialist you call in. steward owns everything in between: when spending money is worth it, whether the context still fits, and how to keep the archive from filling your disk.
 > **Open `http://127.0.0.1:27418/` for the console** — fill both slots, tune the quota, issue project keys, never touch the command line.
@@ -17,14 +17,14 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 
 | | |
 |---|---|
-| Version | **v1.2.1** ([release notes](docs/releases/v1.2.1.md)) |
+| Version | **v1.3.0** ([release notes](docs/releases/v1.3.0.md)) |
 | License | **Apache-2.0** ([LICENSE](LICENSE) · [NOTICE](NOTICE)) — commercial use, modification, closed-source distribution, with a patent grant |
 | Shape | single-process FastAPI gateway, stateless; web console on the same port |
 | Default port | 27418 |
 | Wire protocol | `/v1/chat/completions` + `/v1/responses` (converted both ways) |
 | Dependencies | fastapi / uvicorn / httpx / PyYAML — no database |
 | Size | 5,824 lines of Python (comments included), 14 modules |
-| Tests | 387: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · console 33 · the rest unit and end-to-end |
+| Tests | 413: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · console 38 · net policy 7 · the rest unit and end-to-end |
 | Per-turn injection | 531 tokens (system + quota + tool definition) |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 
@@ -269,6 +269,46 @@ python -m steward serve --check -c config.yaml
 ```
 
 `GET /health` reports the same state as `advanced.configured: false`.
+### 4.4 Two numbers that look cryptic
+
+**What "trim to 0.65 of the budget" means.**
+
+Trimming does not mean "fit exactly in the window". It means **cut down to 65% of the window**, leaving 35% headroom. The chain is:
+
+```
+usable window × usable_ratio(0.85) − output reserve − safety margin × learned shrink factor  =  budget
+budget × target_ratio(0.65)                                                              =  trim target
+```
+
+Why not trim to exactly fitting? Because the next turn grows — the model's answer and the tool results go back into the window. Trim to 100% and the next turn overflows immediately, so you trim again; and every trim invalidates llama.cpp's **prefix cache**, forcing the whole history to be pre-filled again (measured at ~1300 tok/s). Leaving 35% headroom means several turns fit before the next trim.
+
+Tuning it:
+
+| Value | Effect |
+|---|---|
+| Higher (0.75–0.85) | Shallower, more frequent trims; less recompute each time, but the cache is invalidated more often |
+| Lower (around 0.5) | One deep cut; the gap between trims stretches, but each recompute is bigger |
+
+It pairs with `min_clear_tokens` (8000 by default): a trim must free at least that many tokens to be worth doing, otherwise the history stays — **no trim means the cache survives**. Hence the policy is "trim rarely, but trim properly".
+
+**How long do we wait by default.**
+
+| Where | Default | Why |
+|---|---|---|
+| Base model `base.timeout_s` | **600 s** | A local 30B is slow to first token on long context |
+| Advanced model `advanced.timeout_s` | **120 s** | The usual ceiling for a cloud API |
+| Connect timeout | **15 s** | Same for both; the handshake should fail fast rather than hang |
+| Spine generation | 30 s | Internal call, does not affect the main request |
+
+What a timeout means depends on how far the request got:
+
+- **Never connected** (service not running, wrong address) → fails immediately and **the quota is refunded**, because nothing reached the upstream;
+- **Connected but no result** (the model was too slow) → waits out the timeout and **the quota is not refunded**, because the upstream may already be generating and billing.
+
+So an accidental timeout never burns quota for free — at worst you wait after having already paid. To calibrate, watch the `X-Steward-Cloud-Ms` response header: it is how long the advanced model actually took that turn. Both timeouts are editable in the console.
+
+> Fixed a misleading problem along the way: with `HTTP_PROXY` set, even loopback addresses were sent to the proxy, so "the model is not running" showed up as "timeout". Local and private addresses now connect directly; public ones still use the proxy.
+
 
 ### 4.3 The console
 
@@ -340,11 +380,12 @@ There is no supervisor, and the gateway cannot restart itself in-process — it 
 │   ├── server.py              FastAPI routes, auth, tool loop
 │   ├── __main__.py            serve / init / test / key / ctx / refs / artifacts
 │   ├── envfile.py             .env reading and writing (init + console)
+│   ├── netpolicy.py           net policy: direct for local, proxy for public
 │   └── README.md              implementation notes and troubleshooting (Chinese)
 ├── docs/                      three diagrams, generated by scripts/gen_diagrams.py
 ├── scripts/                   integration tests, live checks, diagram generation, publishing
 │   └── publish.py             push to GitHub: git first, Git Data API as fallback
-├── tests/                     387 cases
+├── tests/                     413 cases
 │   └── fixtures/              363-message history sample used by the audit
 ├── legacy/                    archives of two earlier generations, not recommended
 ├── ARCHITECTURE.md            decisions and the alternatives that lost (Chinese)
@@ -440,7 +481,7 @@ refs:          # let the cloud read local files. Off by default — the only out
 ## 8. Tests
 
 ```bash
-python -m pytest tests -q                    # 387
+python -m pytest tests -q                    # 413
 python -m pytest tests/test_audit.py -s -q   # just the comparison tables
 python scripts/ctx_live.py --fit 130000 --spine   # one real trim + spine against a live model
 ```

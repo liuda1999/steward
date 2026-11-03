@@ -575,6 +575,9 @@ def create_app(
         compacted = False
         refs_files = 0
         truncated = False
+        # 进阶模型这一轮花了多久 —— 用户要靠它校准超时，
+        # 没有这个数字就只能靠猜「是不是太短了」。
+        cloud_ms = 0
         spine_state: Spine | None = None
         spine_model_calls = 0  # 一个请求最多为骨架花一次模型调用
 
@@ -873,6 +876,7 @@ def create_app(
                     )
                     continue
 
+                cloud_ms += result.elapsed_ms
                 if result.not_sent:
                     await guard.refund(turn)
                 await guard.commit(turn, kind, ask, {
@@ -980,6 +984,7 @@ def create_app(
             "context_budget": budget,
             "truncated": truncated,
             "refs_files": refs_files,
+            "cloud_ms": cloud_ms,
         }
         usage = build_usage(last_resp, turn)
         headers = {
@@ -989,6 +994,8 @@ def create_app(
             "X-Steward-Rounds": str(rounds),
             "X-Steward-Ctx": f"used={last_report.after} budget={budget} saved={last_report.saved}",
         }
+        if cloud_ms:
+            headers["X-Steward-Cloud-Ms"] = str(cloud_ms)
         if refs_files:
             headers["X-Steward-Refs"] = str(refs_files)
         if truncated:

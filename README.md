@@ -4,8 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-387%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.2.1-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-413%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.3.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > 本地模型是主力，云端是外援。steward 管这中间的一切：什么时候值得花钱、窗口装不装得下、档案怎么不把磁盘写满。
 > **打开 `http://127.0.0.1:27418/` 就是控制台** —— 填两个槽位的 API、调配额、签发项目 key，都不用碰命令行。
@@ -17,14 +17,14 @@
 
 | | |
 |---|---|
-| 版本 | **v1.2.1**（[发布说明](docs/releases/v1.2.1.md)） |
+| 版本 | **v1.3.0**（[发布说明](docs/releases/v1.3.0.md)） |
 | 许可证 | **Apache-2.0**（[LICENSE](LICENSE) · [NOTICE](NOTICE)）—— 可商用、可修改、可闭源分发，附专利授权 |
 | 形态 | 单进程 FastAPI 网关，无状态；同一端口带 Web 控制台 |
 | 默认端口 | 27418 |
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
 | 规模 | 5,824 行 Python（含注释），14 个模块 |
-| 测试 | 387 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 33 · 其余为各层单测与端到端 |
+| 测试 | 413 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 38 · 网络策略 7 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -269,6 +269,46 @@ python -m steward serve --check -c config.yaml
 ```
 
 `GET /health` 里也有这个状态：`advanced.configured: false`。
+### 4.4 两个容易看不懂的数
+
+**`裁到预算的 0.65` 是什么。**
+
+裁剪不是「正好塞进窗口」，而是**砍到窗口的 65%**，留出 35% 的余量。计算链是：
+
+```
+可用窗口 × usable_ratio(0.85) − 输出预留 − 安全余量 × 学到的收缩系数  =  预算
+预算 × target_ratio(0.65)                                        =  裁剪目标
+```
+
+为什么不砍到刚好装下？因为下一轮还会长——模型的回答、工具结果都要进窗口。砍到 100% 的话，下一轮立刻又超，于是又裁一次；而每次裁剪都会让 llama.cpp 的**前缀缓存失效**，那一大段历史要重新 prefill（实测约 1300 tok/s）。留 35% 余量，几轮之内不用再裁。
+
+调它的取舍：
+
+| 值 | 效果 |
+|---|---|
+| 调高（0.75~0.85） | 裁得更浅更勤，每次重算的少，但缓存失效的次数多 |
+| 调低（0.5 左右） | 一次砍得狠，两次裁剪之间撑得久，但每次重算的量更大 |
+
+还有一个配套开关 `min_clear_tokens`（默认 8000）：一次裁剪至少要清出这么多 token 才值得动，否则宁可留着——**不裁剪，缓存还在**。所以真正的策略是「少裁但裁到位」。
+
+**超时默认等多久。**
+
+| 位置 | 默认 | 说明 |
+|---|---|---|
+| 基础模型 `base.timeout_s` | **600 秒** | 本地 30B 在长上下文上首字慢，给足 |
+| 进阶模型 `advanced.timeout_s` | **120 秒** | 云端 API 的常规上限 |
+| 连接超时 | **15 秒** | 两者都一样，握手阶段就该失败，不该干等 |
+| 骨架提炼 | 30 秒 | 内部调用，不影响主请求 |
+
+超时了会怎样，取决于请求走到哪一步：
+
+- **根本没连上**（服务没启动、地址写错）→ 立刻报错，**额度退回**，因为请求没送到上游；
+- **连上了但没等到结果**（模型太慢）→ 等满超时才放弃，**额度不退**，因为上游可能已经在生成、已经在计费。
+
+所以「一不小心超时」不会白花额度，只会在已经花钱的情况下白等。想校准超时，看响应头 `X-Steward-Cloud-Ms`——那是这一轮进阶模型实际花了多少毫秒。控制台里两个槽位的超时都能直接改。
+
+> 顺带修了一个会误导人的问题：如果机器上设了 `HTTP_PROXY`，本机地址也会被送给代理，于是「模型没启动」会显示成「超时」。现在本机与内网地址一律直连，公网地址照常走代理。
+
 
 ### 4.3 控制台
 
@@ -340,11 +380,12 @@ python -m steward serve
 │   ├── server.py              FastAPI 路由、鉴权、工具循环
 │   ├── __main__.py            serve / init / test / key / ctx / refs / artifacts
 │   ├── envfile.py             .env 的读写（init 与控制台共用）
+│   ├── netpolicy.py           网络策略：本机直连，公网走代理
 │   └── README.md              实现细节与排错手册
 ├── docs/                        三张图，由 scripts/gen_diagrams.py 生成
 ├── scripts/                     联调、真机验证、图生成、推送
 │   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
-├── tests/                       387 个用例
+├── tests/                       413 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
 ├── ARCHITECTURE.md              架构决策与被否掉的方案
@@ -440,7 +481,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 387 个
+python -m pytest tests -q                    # 413 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```
