@@ -9,11 +9,13 @@
 
 | | |
 |---|---|
+| 版本 | **v1.0.0**（[发布说明](docs/releases/v1.0.0.md)）· MIT |
 | 形态 | 单进程 FastAPI 网关，无状态 |
+| 默认端口 | 27418 |
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
-| 规模 | 约 5,600 行 Python（含注释），14 个模块 |
-| 测试 | 342 个：可靠性 20 · 对照审计 23 · 端口与槽位 28 · 其余为各层单测与端到端 |
+| 规模 | 5,824 行 Python（含注释），14 个模块 |
+| 测试 | 345 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -275,7 +277,7 @@ python -m steward serve --check -c config.yaml
 ├── docs/                        三张图，由 scripts/gen_diagrams.py 生成
 ├── scripts/                     联调、真机验证、图生成、推送
 │   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
-├── tests/                       342 个用例
+├── tests/                       345 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
 ├── ARCHITECTURE.md              架构决策与被否掉的方案
@@ -302,6 +304,8 @@ python -m steward serve --check -c config.yaml
 | `python -m steward artifacts` | 看存档占用，`--clean` 回收 |
 | `python scripts/publish.py --doctor` | 诊断推送环境（证书 / 连通性 / 令牌 / 预演） |
 | `python scripts/publish.py -m "说明"` | 提交并推送，不挑环境 |
+| `python -m steward --version` | 看版本号 |
+| `python scripts/publish.py --release vX.Y.Z --notes-file …` | 打 tag 并发布 |
 
 ### 6.1 推送为什么需要脚本
 
@@ -370,7 +374,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 342 个
+python -m pytest tests -q                    # 345 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```

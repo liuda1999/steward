@@ -263,3 +263,41 @@ def test_port_owner_reports_who_holds_it():
         holder.close()
     assert detail, "端口被占用却报成空闲"
     assert "PID" in detail or "未知" in detail
+
+
+# ---------------------------------------------------------------- 版本
+
+
+def test_version_is_semver():
+    """版本号要能被工具解析，别写成 "1.0" 或 "v1.0.0"。"""
+    import re
+
+    import steward
+
+    assert re.fullmatch(r"\d+\.\d+\.\d+", steward.__version__), steward.__version__
+
+
+def test_cli_reports_version(capsys):
+    """`--version` 是顶层参数，不能被当成子命令的参数塞进 serve。"""
+    from steward.__main__ import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    assert "steward" in capsys.readouterr().out
+
+
+def test_health_reports_version(tmp_path):
+    """报版本号应该是 /health 的义务：用户提问第一句总是「我这是哪个版本」。"""
+    import steward
+
+    up = Echo()
+    app = create_app(_cfg(tmp_path), httpx.MockTransport(up.handler))
+
+    async def go():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://gw"
+        ) as client:
+            return await client.get("/health")
+
+    assert asyncio.run(go()).json()["version"] == steward.__version__

@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .artifacts import Store
 from .cloud import AdvancedClient, flatten_content
+from . import __version__
 from .config import AppCfg
 from .context import Estimator, Limits, Measurer, Prober, Trimmer, TrimReport
 from .guard import Guard, TurnState
@@ -296,7 +297,8 @@ def create_app(cfg: AppCfg, transport: httpx.AsyncBaseTransport | None = None) -
     async def lifespan(_: FastAPI):
         snap = await guard.snapshot()
         logger.info(
-            "启动：基础=%s 进阶=%s 今日 %s/%s 单请求上限=%s",
+            "启动 steward %s：基础=%s 进阶=%s 今日 %s/%s 单请求上限=%s",
+            __version__,
             cfg.base.model,
             cfg.advanced.model,
             snap["used_today"],
@@ -373,6 +375,7 @@ def create_app(cfg: AppCfg, transport: httpx.AsyncBaseTransport | None = None) -
         return JSONResponse(
             {
                 "status": "ok",
+                "version": __version__,
                 "base": {"base_url": cfg.base.base_url, "model": cfg.base.model},
                 "advanced": {
                     "base_url": cfg.advanced.base_url,

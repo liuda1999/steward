@@ -275,6 +275,63 @@ async def api_push(token: str, branch: str, message: str | None) -> tuple[bool, 
         return True, note
 
 
+# ---------------------------------------------------------------- tag 与 release
+
+
+def git_push_tag(token: str, tag: str) -> tuple[bool, str]:
+    """推一个 tag。和推分支同一套凭据与 CA 处理，只是 ref 换了。"""
+    url = f"https://x-access-token:{token}@github.com/{repo_slug()}.git"
+    proc = subprocess.run(
+        ["git", *git_tls_args(), "-c", "credential.helper=", "push", url, f"refs/tags/{tag}"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        errors="replace",
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    )
+    detail = (proc.stderr or proc.stdout).strip().replace(token, "<token>")
+    return proc.returncode == 0, detail[-500:]
+
+
+def tag_body(tag: str) -> str:
+    """annotated tag 的说明直接用这次提交的标题行，别写空。"""
+    subject = git("log", "-1", "--format=%s").strip()
+    return f"{tag}\n\n{subject}" if subject else tag
+
+
+async def create_release(token: str, tag: str, title: str, notes: str, prerelease: bool, draft: bool) -> tuple[bool, str]:
+    """建一个 GitHub Release。
+
+    已经存在同名 release 时返回失败并说明——GitHub 不让你改历史，
+    要改只能先删再建，那应该是人的决定，不该由脚本猜。
+    """
+    import httpx
+
+    verify, how = await resolve_verify()
+    if verify is False:
+        return False, f"连不上 GitHub，证书一个都没过：{how}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    payload = {
+        "tag_name": tag,
+        "name": title or tag,
+        "body": notes,
+        "draft": draft,
+        "prerelease": prerelease,
+    }
+    async with httpx.AsyncClient(timeout=45, headers=headers, verify=verify) as client:
+        r = await client.post(f"{API_ROOT}/repos/{repo_slug()}/releases", json=payload)
+        if r.status_code == 422 and "already_exists" in r.text:
+            return False, f"{tag} 已经有 Release 了，要改先手动删掉旧的"
+        if r.status_code not in (200, 201):
+            return False, f"{r.status_code}: {r.text[:300]}"
+        data = r.json()
+        return True, f"{data['html_url']}（{data['name']}，{'草稿' if draft else '已发布'}）"
+
+
 # ---------------------------------------------------------------- 诊断
 
 
@@ -342,6 +399,9 @@ async def main_async(args: argparse.Namespace) -> int:
 
     branch = args.branch or git("rev-parse", "--abbrev-ref", "HEAD").strip()
 
+    if args.release and not args.tag:
+        args.tag = args.release
+
     if args.message:
         run(["git", "add", "-A"])
         commit = run(["git", "commit", "-m", args.message])
@@ -353,25 +413,54 @@ async def main_async(args: argparse.Namespace) -> int:
     ok, detail = git_push(token, branch)
     if ok:
         print(f"已用 git push 推送到 {branch}")
-        return 0
-
-    reason = detail.splitlines()[-1] if detail else "未知原因"
-    print(f"git push 不通（{reason}），改用 Git Data API")
-    ok, detail = await api_push(token, branch, args.message)
-    if ok:
+    else:
+        reason = detail.splitlines()[-1] if detail else "未知原因"
+        print(f"git push 不通（{reason}），改用 Git Data API")
+        ok, detail = await api_push(token, branch, args.message)
+        if not ok:
+            print(f"API 推送失败：{detail}")
+            return 1
         print(f"已用 API 推送：{detail}")
         print("提示：本地 HEAD 与远端提交对象可能不同（服务端会重写 author 字段），但树一致。")
+
+    if not args.tag:
         return 0
-    print(f"API 推送失败：{detail}")
-    return 1
+
+    # 打 tag 之前先确认它指向的提交已经在远端，否则 release 会指向一个孤儿
+    remote = run(["git", *git_tls_args(), "ls-remote", "--tags", "origin", f"refs/tags/{args.tag}"])
+    if remote.returncode == 0 and args.tag not in remote.stdout:
+        ok, detail = git_push_tag(token, args.tag)
+        print(f"{'已推送 tag' if ok else 'tag 推送失败'} {args.tag}" + ("" if ok else f"：{detail}"))
+        if not ok:
+            return 1
+    else:
+        print(f"tag {args.tag} 已在远端")
+
+    if not args.release:
+        return 0
+
+    notes = ""
+    if args.notes_file:
+        notes = Path(args.notes_file).read_text(encoding="utf-8")
+    ok, detail = await create_release(token, args.release, args.title, notes, args.prerelease, args.draft)
+    print(f"{'已创建 Release' if ok else 'Release 创建失败'}：{detail}")
+    return 0 if ok else 1
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="推送到 GitHub：git push 优先，走不通就换 Git Data API")
+    ap = argparse.ArgumentParser(
+        description="推送到 GitHub：git push 优先，走不通就换 Git Data API；可选打 tag 与建 Release"
+    )
     ap.add_argument("-m", "--message", default="", help="先提交工作区改动，再推送")
     ap.add_argument("-t", "--token", default="", help="GitHub 令牌（更推荐 STEWARD_GH_TOKEN 环境变量）")
     ap.add_argument("-b", "--branch", default="", help="分支名，默认当前分支")
     ap.add_argument("--doctor", action="store_true", help="只诊断：git、证书、连通性、令牌、推送预演")
+    ap.add_argument("--tag", default="", help="推送这个 tag（本地需已存在）")
+    ap.add_argument("--release", default="", help="为这个 tag 建 Release（同时会推 tag）")
+    ap.add_argument("--title", default="", help="Release 标题，默认用 tag 名")
+    ap.add_argument("--notes-file", default="", help="Release 正文所用的 Markdown 文件")
+    ap.add_argument("--prerelease", action="store_true", help="标为预发布")
+    ap.add_argument("--draft", action="store_true", help="存为草稿，不对外可见")
     return asyncio.run(main_async(ap.parse_args()))
 
 

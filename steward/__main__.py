@@ -23,6 +23,7 @@ from pathlib import Path
 import httpx
 import uvicorn
 
+from . import __version__
 from .config import DEFAULT_PORT, COMMON_PORTS, EndpointCfg, load_config, looks_sequential
 from .artifacts import Store
 from .context import Estimator, Measurer, Prober
@@ -702,6 +703,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="steward",
         description="本地模型管家：两个模型槽位，对外一把 key，管账 / 管窗 / 管档案",
     )
+    parser.add_argument("--version", action="version", version=f"steward {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     serve = sub.add_parser("serve", help="启动网关")
@@ -773,7 +775,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
         argv = ["serve"]
-    elif argv[0] not in COMMANDS and argv[0] not in ("-h", "--help"):
+    elif argv[0] not in COMMANDS and argv[0] not in ("-h", "--help", "--version"):
+        # 不带子命令时默认 serve，但 -h / --version 是顶层参数，不能被塞进子命令里
         argv = ["serve"] + argv
 
     parser = build_parser()
