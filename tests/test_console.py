@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 
 import httpx
@@ -394,12 +395,87 @@ def test_console_serves_logo(tmp_path):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:27418"
         ) as c:
-            return await c.get("/logo.jpg")
+            return await c.get("/logo.png")
 
     resp = asyncio.run(go())
     assert resp.status_code == 200
-    assert resp.headers["content-type"] == "image/jpeg"
-    assert resp.content[:2] == b"\xff\xd8", "返回的不是 JPEG"
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content[:4] == b"\x89PNG", "返回的不是 PNG"
+
+
+def test_test_slot_reuses_stored_key(tmp_path, monkeypatch):
+    """输入框留空＝不改；点「测试连接」时也得用上已保存的 key。
+
+    回归过一次：界面显示「已设置」，测试连接却拿空 key 去探，云端槽位
+    必然 401，用户只会以为自己地址填错了。
+    """
+    monkeypatch.setenv("ADVANCED_API_KEY", "sk-stored")
+    app, _, console = make_app(tmp_path)
+    seen: dict = {}
+
+    def fake_probe(ep, timeout=8.0):
+        seen["key"] = ep.api_key
+        return {"ok": True, "status": 200, "models": [], "context": 0, "detail": ""}
+
+    monkeypatch.setattr("steward.webconsole.probe", fake_probe)
+    status, _ = call(
+        app,
+        "post",
+        "/console/api/test",
+        {"slot": "advanced", "values": {"base_url": "https://api.test/v1", "model": "m", "api_key": ""}},
+        token=console.token,
+    )
+    assert status == 200
+    assert seen["key"] == "sk-stored", "留空时没有回退到已保存的 key"
+
+
+def test_save_reports_only_real_changes(tmp_path):
+    """界面是整份表单提交，不能把没改的字段也报成改动。
+
+    回归过一次：只改一个数字，界面上写「共 22 项」，用户以为配置被改乱了；
+    而且没改的行也被重写，diff 变脏。
+    """
+    cfg_path = write_cfg(tmp_path)
+    before = cfg_path.read_text(encoding="utf-8")
+    payload = {
+        "server": {"host": "127.0.0.1", "port": 27418},
+        "guard": {"max_calls_per_turn": 2, "daily_limit": 5, "min_interval_s": 30},
+        "context": {"ctx_limit": 0, "target_ratio": 0.65, "spine": True},
+    }
+    r = apply_changes(cfg_path, tmp_path / ".env", payload)
+    assert r["changed"] == [], r["changed"]
+    assert cfg_path.read_text(encoding="utf-8") == before, "没有改动却重写了文件"
+
+    payload["guard"]["min_interval_s"] = 7
+    r2 = apply_changes(cfg_path, tmp_path / ".env", payload)
+    assert r2["changed"] == ["guard.min_interval_s"], r2["changed"]
+    assert "min_interval_s: 7" in cfg_path.read_text(encoding="utf-8")
+
+
+def test_console_is_bilingual():
+    """界面双语不能靠"记得改另一边"。
+
+    界面文案全是 data-i18n 标记 + 一张字典。三种漏法都能被这条盯住：
+    页面引用了字典里没有的键、两种语言条目数不一致、切换按钮被删掉。
+    """
+    page = (Path(__file__).resolve().parents[1] / "steward" / "web" / "console.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="langBtn"' in page, "缺语言切换按钮"
+
+    def keys(lang: str) -> set[str]:
+        start = page.index(f"  {lang}: {{")
+        end = page.index("\n  }", start)
+        return set(re.findall(r'^\s{4}"([^"]+)":', page[start:end], re.M))
+
+    zh, en = keys("zh"), keys("en")
+    assert len(zh) > 50, f"中文字典只有 {len(zh)} 条"
+    assert zh == en, f"两种语言条目不一致：仅中文 {zh - en} / 仅英文 {en - zh}"
+
+    used = set(re.findall(r'data-i18n(?:-html|-ph)?="([^"]+)"', page))
+    assert used, "页面没有任何 data-i18n 标记"
+    missing = used - zh
+    assert not missing, f"页面引用了字典里没有的键：{sorted(missing)}"
 
 
 # ---------------------------------------------------------------- key 管理

@@ -156,9 +156,9 @@ def test_pyproject_keywords_cover_core_terms():
 
 def test_logo_present_and_referenced():
     """两版 README 顶部都要有 logo；文件缺了 GitHub 上就是一个碎图。"""
-    assert (ROOT / "docs" / "logo.jpg").is_file(), "缺 docs/logo.jpg"
+    assert (ROOT / "docs" / "logo.png").is_file(), "缺 docs/logo.png"
     for path in (ZH, EN):
-        assert "docs/logo.jpg" in path.read_text(encoding="utf-8"), f"{path.name} 没引用 logo"
+        assert "docs/logo.png" in path.read_text(encoding="utf-8"), f"{path.name} 没引用 logo"
 
 
 def test_logo_license_is_disclosed():

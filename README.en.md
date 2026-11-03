@@ -1,12 +1,12 @@
 # steward
 
-<img src="docs/logo.jpg" width="120" align="right" alt="steward">
+<img src="docs/logo.png" width="120" align="right" alt="steward">
 
 [简体中文](README.md) | **English**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-473%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-476%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **Token-cost governance for local AI agents (a local-first LLM gateway).**
@@ -145,7 +145,7 @@ See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**: sharing on a LAN, systemd / Ta
 
 ### 4.1 Console
 
-Same port: `/` is the console, `/v1/*` is the API. They do not interfere.
+Same port: `/` is the console, `/v1/*` is the API. They do not interfere. The console is **bilingual**: the language toggle in the header switches instantly, and the choice is remembered in the browser.
 
 | Panel | What you can change |
 |---|---|

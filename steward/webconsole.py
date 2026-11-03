@@ -241,6 +241,29 @@ def _section_dict(data: dict, name: str) -> dict:
     return got if isinstance(got, dict) else {}
 
 
+_MISSING = object()
+
+
+def _equivalent(old: Any, new: Any) -> bool:
+    """旧值和新值算不算同一个东西。
+
+    两边类型来源不同：旧值来自 YAML（可能是 int / float / bool / None），
+    新值来自表单（数字控件给的是 number，文本控件给的是 str）。只比最终
+    语义，不比类型，否则 "600" 和 600 会被当成一次改动。
+    """
+    if old is _MISSING:
+        return False
+    if isinstance(old, bool) or isinstance(new, bool):
+        return bool(old) == bool(new)
+    if isinstance(old, (int, float)) and isinstance(new, (int, float)):
+        return float(old) == float(new)
+    if isinstance(old, list) or isinstance(new, list):
+        return [str(x) for x in (old or [])] == [str(x) for x in (new or [])]
+    if old is None:
+        return new in ("", None)
+    return str(old) == str(new)
+
+
 def apply_changes(
     cfg_path: Path,
     env_path: Path,
@@ -263,6 +286,14 @@ def apply_changes(
     env_updates: dict[str, str] = {}
     removed_env: list[str] = []
 
+    # 拿旧值做比对：界面是「整份表单提交」，不比对的话每次保存都会把
+    # 22 个字段全报成改动，用户改一个数字看到「共 22 项」只会以为出了错，
+    # 而且没改的行也被重写一遍（注释虽然保住了，但 diff 会变脏）。
+    try:
+        doc = yaml.safe_load(original) or {}
+    except yaml.YAMLError:
+        doc = {}
+
     for section, fields in EDITABLE.items():
         got = payload.get(section)
         if not isinstance(got, dict):
@@ -272,8 +303,13 @@ def apply_changes(
                 continue
             raw = got[key]
             value = _coerce(kind, raw, f"{section}.{key}")
-            text = set_in_text(text, section, key, value)
-            changed.append(f"{section}.{key}")
+            current_value = (doc.get(section) or {}).get(key, _MISSING) if isinstance(doc.get(section), dict) else _MISSING
+            if not _equivalent(current_value, value):
+                text = set_in_text(text, section, key, value)
+                changed.append(f"{section}.{key}")
+                if not isinstance(doc.get(section), dict):
+                    doc[section] = {}
+                doc[section][key] = value
 
     for section, env_name in SECRETS.items():
         got = payload.get(section)
@@ -438,17 +474,17 @@ def install(app, cfg: AppCfg, cfg_path: Path, keys: KeyStore, page: Path | None 
             return HTMLResponse("<h1>控制台页面缺失</h1><p>找不到 steward/web/console.html</p>", status_code=500)
         return HTMLResponse(html)
 
-    @app.get("/logo.jpg")
+    @app.get("/logo.png")
     async def logo():
         """页眉与 favicon 用的标识图。
 
         和 console.html 放同一目录：换页面（测试用临时目录）时图片也跟着走，
         不会出现「页面在、图不在」。文件缺失只影响观感，不该 500。
         """
-        path = html_path.parent / "logo.jpg"
+        path = html_path.parent / "logo.png"
         if not path.is_file():
-            return JSONResponse({"ok": False, "error": "logo.jpg 不存在"}, status_code=404)
-        return FileResponse(path, media_type="image/jpeg")
+            return JSONResponse({"ok": False, "error": "logo.png 不存在"}, status_code=404)
+        return FileResponse(path, media_type="image/png")
 
     @router.post("/login")
     async def login(request: Request) -> JSONResponse:
@@ -518,10 +554,15 @@ def install(app, cfg: AppCfg, cfg_path: Path, keys: KeyStore, page: Path | None 
         raw = body.get("values") or {}
         if not isinstance(raw, dict):
             return fail(ConsoleError("values 需要对象"))
+        # 输入框留空的意思是「不改」，不是「清空」——测试连接也得照这个来。
+        # 否则界面上明明显示「已设置」，点一下测试却因为没有 key 得到 401，
+        # 用户会以为是自己填错了地址。
+        stored = cfg.base if slot == "base" else cfg.advanced
+        api_key = str(raw.get("api_key") or "").strip() or (stored.api_key or "")
         ep = EndpointCfg(
             base_url=str(raw.get("base_url") or "").strip(),
             model=str(raw.get("model") or "").strip(),
-            api_key=str(raw.get("api_key") or "").strip(),
+            api_key=api_key,
             protocol=str(raw.get("protocol") or "chat"),
         )
         if not ep.base_url:

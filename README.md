@@ -1,12 +1,12 @@
 # steward
 
-<img src="docs/logo.jpg" width="120" align="right" alt="steward">
+<img src="docs/logo.png" width="120" align="right" alt="steward">
 
 **简体中文** | [English](README.en.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-473%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-476%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **给本地 AI 助手用的 token 成本治理网关（local-first LLM gateway）。**
@@ -145,7 +145,7 @@ api_key  = "st-..."        # 签发时只显示一次，之后只存 hash
 
 ### 4.1 控制台
 
-同一个端口：`/` 是控制台，`/v1/*` 是 API，互不干扰。
+同一个端口：`/` 是控制台，`/v1/*` 是 API，互不干扰。界面**中英双语**，右上角的 `EN` / `中文` 一键切换，选择记在浏览器本地。
 
 | 位置 | 能改什么 |
 |---|---|

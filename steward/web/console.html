@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>steward 控制台</title>
-<link rel="icon" href="logo.jpg">
+<link rel="icon" href="logo.png">
 <style>
   /* 配色沿用 docs/ 里三张图的语义色：绿=本地、红=云端、蓝=网关。 */
   :root {
@@ -122,22 +122,24 @@
   .banner code { background: var(--code); padding: 1px 6px; border-radius: 5px; }
   .sw { display: flex; align-items: center; gap: 8px; }
   .sw input { width: auto; }
+  .langbtn { font-size: 12.5px; padding: 4px 12px; border-radius: 999px; letter-spacing: .02em; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1><img src="logo.jpg" alt="" class="logo">steward <span class="ver" id="ver"></span></h1>
+  <h1><img src="logo.png" alt="" class="logo">steward <span class="ver" id="ver"></span></h1>
+  <button type="button" id="langBtn" class="langbtn" title="Switch language / 切换语言">EN</button>
   <div class="chips" id="chips"></div>
 </header>
 
 <main>
   <!-- 登录 -->
   <div id="login" class="login card hidden">
-    <h2>需要口令</h2>
-    <p>口令在网关启动时打印在终端里，也存在 <code>state/console.token</code>。它和控制台绑在同一个端口上，所以进门要报一次名字。</p>
-    <div class="row"><label for="tok">口令</label><input type="password" id="tok" autocomplete="current-password" autofocus></div>
-    <div class="actions"><button class="primary" id="loginBtn">进入</button><span class="out" id="loginOut"></span></div>
+    <h2 data-i18n="login.title">需要口令</h2>
+    <p data-i18n-html="login.desc">口令在网关启动时打印在终端里，也存在 <code>state/console.token</code>。它和控制台绑在同一个端口上，所以进门要报一次名字。</p>
+    <div class="row"><label for="tok" data-i18n="login.token">口令</label><input type="password" id="tok" autocomplete="current-password" autofocus></div>
+    <div class="actions"><button class="primary" id="loginBtn" data-i18n="login.enter">进入</button><span class="out" id="loginOut"></span></div>
   </div>
 
   <!-- 主体 -->
@@ -147,101 +149,101 @@
 
     <div class="grid2">
       <section class="card slot-base">
-        <div class="slot-head"><strong>基础模型</strong><span class="tag">槽位一 · 日常主力 · 大部分请求走这里</span></div>
-        <div class="row"><label>地址</label><input type="text" data-f="base.base_url" placeholder="http://127.0.0.1:11434/v1"></div>
-        <div class="row"><label>模型标识</label><input type="text" data-f="base.model" list="models-base" placeholder="qwen3:8b（Ollama）/ /models/x.gguf（llama.cpp）">
+        <div class="slot-head"><strong data-i18n="slot.base.title">基础模型</strong><span class="tag" data-i18n="slot.base.tag">槽位一 · 日常主力 · 大部分请求走这里</span></div>
+        <div class="row"><label data-i18n="common.url">地址</label><input type="text" data-f="base.base_url" placeholder="http://127.0.0.1:11434/v1"></div>
+        <div class="row"><label data-i18n="common.model">模型标识</label><input type="text" data-f="base.model" list="models-base" data-i18n-ph="ph.modelLocal" placeholder="qwen3:8b（Ollama）/ /models/x.gguf（llama.cpp）">
           <datalist id="models-base"></datalist>
-          <span class="hint">本地模型：填模型名或 GGUF 路径，取决于你的服务怎么暴露。</span>
+          <span class="hint" data-i18n="slot.base.modelHint">本地模型：填模型名或 GGUF 路径，取决于你的服务怎么暴露。</span>
         </div>
-        <div class="row"><label>上游 key</label><input type="password" data-f="base.api_key" placeholder="留空＝不改"></div>
-        <div class="row"><label>协议</label>
+        <div class="row"><label data-i18n="common.key">上游 key</label><input type="password" data-f="base.api_key" data-i18n-ph="ph.keyKeep" placeholder="留空＝不改"></div>
+        <div class="row"><label data-i18n="common.protocol">协议</label>
           <select data-f="base.protocol"><option value="chat">chat</option><option value="responses">responses</option></select>
         </div>
         <div class="row"><label>thinking</label>
-          <select data-f="base.thinking"><option value="off">off（推理型模型建议）</option><option value="auto">auto</option><option value="on">on</option></select>
+          <select data-f="base.thinking"><option value="off" data-i18n="think.off.rec">off（推理型模型建议）</option><option value="auto" data-i18n="think.auto">auto</option><option value="on" data-i18n="think.on">on</option></select>
         </div>
-        <div class="row"><label>超时（秒）</label><input type="number" min="5" data-f="base.timeout_s">
-          <span class="hint">等多久算失败。本地模型长上下文首字慢，给足；超时后额度不退（请求已经发出去了）。</span>
+        <div class="row"><label data-i18n="common.timeout">超时（秒）</label><input type="number" min="5" data-f="base.timeout_s">
+          <span class="hint" data-i18n="slot.base.timeoutHint">等多久算失败。本地模型长上下文首字慢，给足；超时后额度不退（请求已经发出去了）。</span>
         </div>
-        <div class="actions"><button data-test="base">测试连接</button><span class="out" id="out-base"></span></div>
+        <div class="actions"><button data-test="base" data-i18n="common.test">测试连接</button><span class="out" id="out-base"></span></div>
       </section>
 
       <section class="card slot-advanced">
-        <div class="slot-head"><strong>进阶模型</strong><span class="tag">槽位二 · 按次计费 · 只在模型申请时调用</span></div>
-        <div class="row"><label>地址</label><input type="text" data-f="advanced.base_url" placeholder="https://api.example.com/v1"></div>
-        <div class="row"><label>模型标识</label><input type="text" data-f="advanced.model" list="models-advanced" placeholder="deepseek-chat / gpt-4o-mini">
+        <div class="slot-head"><strong data-i18n="slot.adv.title">进阶模型</strong><span class="tag" data-i18n="slot.adv.tag">槽位二 · 按次计费 · 只在模型申请时调用</span></div>
+        <div class="row"><label data-i18n="common.url">地址</label><input type="text" data-f="advanced.base_url" placeholder="https://api.example.com/v1"></div>
+        <div class="row"><label data-i18n="common.model">模型标识</label><input type="text" data-f="advanced.model" list="models-advanced" data-i18n-ph="ph.modelCloud" placeholder="deepseek-chat / gpt-4o-mini">
           <datalist id="models-advanced"></datalist>
-          <span class="hint">云端模型：填服务商认的模型名（如 <code>deepseek-chat</code>）。推理版通常是<b>另一个模型名</b>（如 <code>deepseek-reasoner</code>），下面的 thinking 开关只对 llama.cpp / vLLM 这类本地服务有效。</span>
+          <span class="hint" data-i18n-html="slot.adv.modelHint">云端模型：填服务商认的模型名（如 <code>deepseek-chat</code>）。推理版通常是<b>另一个模型名</b>（如 <code>deepseek-reasoner</code>），下面的 thinking 开关只对 llama.cpp / vLLM 这类本地服务有效。</span>
         </div>
-        <div class="row"><label>上游 key</label><input type="password" data-f="advanced.api_key" placeholder="留空＝不改"></div>
-        <div class="row"><label>协议</label>
+        <div class="row"><label data-i18n="common.key">上游 key</label><input type="password" data-f="advanced.api_key" data-i18n-ph="ph.keyKeep" placeholder="留空＝不改"></div>
+        <div class="row"><label data-i18n="common.protocol">协议</label>
           <select data-f="advanced.protocol"><option value="chat">chat</option><option value="responses">responses</option></select>
         </div>
         <div class="row"><label>thinking</label>
-          <select data-f="advanced.thinking"><option value="auto">auto</option><option value="off">off</option><option value="on">on</option></select>
+          <select data-f="advanced.thinking"><option value="auto" data-i18n="think.auto">auto</option><option value="off" data-i18n="think.off">off</option><option value="on" data-i18n="think.on">on</option></select>
         </div>
-        <div class="row"><label>超时（秒）</label><input type="number" min="5" data-f="advanced.timeout_s">
-          <span class="hint">云端慢就调大。连接失败会退额度；已经连上但没等到结果，不退。</span>
+        <div class="row"><label data-i18n="common.timeout">超时（秒）</label><input type="number" min="5" data-f="advanced.timeout_s">
+          <span class="hint" data-i18n="slot.adv.timeoutHint">云端慢就调大。连接失败会退额度；已经连上但没等到结果，不退。</span>
         </div>
-        <div class="actions"><button data-test="advanced">测试连接</button><span class="out" id="out-advanced"></span></div>
-        <p class="hint" style="margin-top:6px">整段留空就是纯本地模式：不注入 <code>consult_cloud</code>，每轮省下约 500 tokens。</p>
+        <div class="actions"><button data-test="advanced" data-i18n="common.test">测试连接</button><span class="out" id="out-advanced"></span></div>
+        <p class="hint" style="margin-top:6px" data-i18n-html="slot.adv.emptyHint">整段留空就是纯本地模式：不注入 <code>consult_cloud</code>，每轮省下约 500 tokens。</p>
       </section>
     </div>
 
     <div class="grid2">
       <section class="card">
-        <h2>配额</h2>
-        <div class="row"><label>单请求上限</label><input type="number" min="0" data-f="guard.max_calls_per_turn"></div>
-        <div class="row"><label>每日总量</label><input type="number" min="0" data-f="guard.daily_limit"></div>
-        <div class="row"><label>最小间隔（秒）</label><input type="number" min="0" data-f="guard.min_interval_s"></div>
+        <h2 data-i18n="guard.title">配额</h2>
+        <div class="row"><label data-i18n="guard.perTurn">单请求上限</label><input type="number" min="0" data-f="guard.max_calls_per_turn"></div>
+        <div class="row"><label data-i18n="guard.daily">每日总量</label><input type="number" min="0" data-f="guard.daily_limit"></div>
+        <div class="row"><label data-i18n="guard.interval">最小间隔（秒）</label><input type="number" min="0" data-f="guard.min_interval_s"></div>
       </section>
 
       <section class="card">
-        <h2>上下文</h2>
-        <div class="row"><label>窗口上限</label><input type="number" min="0" data-f="context.ctx_limit">
-          <span class="hint">任意整数，不限档位（如 100000 / 1048576）；0 = 启动时自动探测。探测到真实值时它只作为上限</span></div>
-        <div class="row"><label>裁到预算的</label><input type="number" step="0.05" min="0.3" max="1" data-f="context.target_ratio"></div>
-        <div class="row"><label>任务骨架</label>
-          <div class="sw"><input type="checkbox" id="spine"><label for="spine" style="color:inherit">裁剪后生成六行摘要</label></div>
+        <h2 data-i18n="ctx.title">上下文</h2>
+        <div class="row"><label data-i18n="ctx.limit">窗口上限</label><input type="number" min="0" data-f="context.ctx_limit">
+          <span class="hint" data-i18n="ctx.limitHint">任意整数，不限档位（如 100000 / 1048576）；0 = 启动时自动探测。探测到真实值时它只作为上限</span></div>
+        <div class="row"><label data-i18n="ctx.target">裁到预算的</label><input type="number" step="0.05" min="0.3" max="1" data-f="context.target_ratio"></div>
+        <div class="row"><label data-i18n="ctx.spine">任务骨架</label>
+          <div class="sw"><input type="checkbox" id="spine"><label for="spine" style="color:inherit" data-i18n="ctx.spineLabel">裁剪后生成六行摘要</label></div>
         </div>
       </section>
     </div>
 
     <section class="card">
-      <h2>存档与文件外发</h2>
+      <h2 data-i18n="art.title">存档与文件外发</h2>
       <div class="grid2">
         <div>
-          <div class="row"><label>保留天数</label><input type="number" min="0" data-f="artifacts.max_age_days"></div>
-          <div class="row"><label>容量上限（MB）</label><input type="number" min="0" data-f="artifacts.max_total_mb"></div>
+          <div class="row"><label data-i18n="art.age">保留天数</label><input type="number" min="0" data-f="artifacts.max_age_days"></div>
+          <div class="row"><label data-i18n="art.size">容量上限（MB）</label><input type="number" min="0" data-f="artifacts.max_total_mb"></div>
         </div>
         <div>
           <div class="row"><label>refs</label>
-            <div class="sw"><input type="checkbox" id="refsOn"><label for="refsOn" style="color:inherit">允许云端读本地文件</label></div>
-            <span class="hint">唯一会主动把本地内容发出去的通道。开启必须配白名单。</span>
+            <div class="sw"><input type="checkbox" id="refsOn"><label for="refsOn" style="color:inherit" data-i18n="art.refsLabel">允许云端读本地文件</label></div>
+            <span class="hint" data-i18n="art.refsHint">唯一会主动把本地内容发出去的通道。开启必须配白名单。</span>
           </div>
-          <div class="row"><label>白名单目录</label>
-            <textarea data-f="refs.roots" placeholder="每行一个绝对路径，例如&#10;C:\projects\demo&#10;/home/me/work"></textarea>
+          <div class="row"><label data-i18n="art.roots">白名单目录</label>
+            <textarea data-f="refs.roots" data-i18n-ph="ph.roots" placeholder="每行一个绝对路径，例如&#10;C:\projects\demo&#10;/home/me/work"></textarea>
           </div>
         </div>
       </div>
     </section>
 
     <section class="card">
-      <h2>监听</h2>
+      <h2 data-i18n="srv.title">监听</h2>
       <div class="grid2">
-        <div class="row"><label>地址</label><input type="text" data-f="server.host">
-          <span class="hint">127.0.0.1 只给本机；0.0.0.0 给局域网（此时鉴权强制 enabled）</span></div>
-        <div class="row"><label>端口</label><input type="number" data-f="server.port"></div>
+        <div class="row"><label data-i18n="srv.host">地址</label><input type="text" data-f="server.host">
+          <span class="hint" data-i18n="srv.hostHint">127.0.0.1 只给本机；0.0.0.0 给局域网（此时鉴权强制 enabled）</span></div>
+        <div class="row"><label data-i18n="srv.port">端口</label><input type="number" data-f="server.port"></div>
       </div>
     </section>
 
     <section class="card">
-      <h2>项目 key</h2>
-      <p class="hint" style="margin-top:0">发给智能体的那把。明文只在签发时出现一次，库里只存 hash。</p>
-      <table class="keys"><thead><tr><th>ID</th><th>标签</th><th>创建</th><th>用量</th><th>状态</th><th></th></tr></thead><tbody id="keyRows"></tbody></table>
+      <h2 data-i18n="keys.title">项目 key</h2>
+      <p class="hint" style="margin-top:0" data-i18n="keys.desc">发给智能体的那把。明文只在签发时出现一次，库里只存 hash。</p>
+      <table class="keys"><thead><tr><th>ID</th><th data-i18n="keys.label">标签</th><th data-i18n="keys.created">创建</th><th data-i18n="keys.usage">用量</th><th data-i18n="keys.status">状态</th><th></th></tr></thead><tbody id="keyRows"></tbody></table>
       <div class="actions">
-        <input type="text" id="keyLabel" placeholder="标签，例如 laptop / ci" style="max-width:220px">
-        <button id="newKey">签发</button>
+        <input type="text" id="keyLabel" data-i18n-ph="ph.keyLabel" placeholder="标签，例如 laptop / ci" style="max-width:220px">
+        <button id="newKey" data-i18n="keys.issue">签发</button>
       </div>
       <div class="newkey" id="newKeyBox"></div>
     </section>
@@ -249,13 +251,285 @@
 </main>
 
 <div class="foot hidden" id="foot">
-  <button class="primary" id="saveBtn">保存并校验</button>
+  <button class="primary" id="saveBtn" data-i18n="save.button">保存并校验</button>
   <span class="msg" id="saveMsg"></span>
 </div>
 
 <script>
 const $ = (s) => document.querySelector(s);
 const FIELDS = [...document.querySelectorAll("[data-f]")];
+
+// ---------------------------------------------------------------- 双语
+// 界面文案走 data-i18n 标记，这里只存字典。没引框架是有意的：整个页面
+// 零外部依赖，断网的机器上也打得开。
+const I18N = {
+  zh: {
+    "app.title": "steward 控制台",
+    "login.title": "需要口令",
+    "login.desc": "口令在网关启动时打印在终端里，也存在 <code>state/console.token</code>。它和控制台绑在同一个端口上，所以进门要报一次名字。",
+    "login.token": "口令",
+    "login.enter": "进入",
+    "slot.base.title": "基础模型",
+    "slot.base.tag": "槽位一 · 日常主力 · 大部分请求走这里",
+    "slot.base.modelHint": "本地模型：填模型名或 GGUF 路径，取决于你的服务怎么暴露。",
+    "slot.base.timeoutHint": "等多久算失败。本地模型长上下文首字慢，给足；超时后额度不退（请求已经发出去了）。",
+    "slot.adv.title": "进阶模型",
+    "slot.adv.tag": "槽位二 · 按次计费 · 只在模型申请时调用",
+    "slot.adv.modelHint": "云端模型：填服务商认的模型名（如 <code>deepseek-chat</code>）。推理版通常是<b>另一个模型名</b>（如 <code>deepseek-reasoner</code>），下面的 thinking 开关只对 llama.cpp / vLLM 这类本地服务有效。",
+    "slot.adv.timeoutHint": "云端慢就调大。连接失败会退额度；已经连上但没等到结果，不退。",
+    "slot.adv.emptyHint": "整段留空就是纯本地模式：不注入 <code>consult_cloud</code>，每轮省下约 500 tokens。",
+    "common.url": "地址",
+    "common.model": "模型标识",
+    "common.key": "上游 key",
+    "common.protocol": "协议",
+    "common.timeout": "超时（秒）",
+    "common.test": "测试连接",
+    "ph.modelLocal": "qwen3:8b（Ollama）/ /models/x.gguf（llama.cpp）",
+    "ph.modelCloud": "deepseek-chat / gpt-4o-mini",
+    "ph.keyKeep": "留空＝不改",
+    "ph.keySet": "已设置（留空＝不改）",
+    "ph.keyUnset": "未设置",
+    "ph.roots": "每行一个绝对路径，例如\nC:\\projects\\demo\n/home/me/work",
+    "ph.keyLabel": "标签，例如 laptop / ci",
+    "think.off.rec": "off（推理型模型建议）",
+    "think.off": "off",
+    "think.auto": "auto",
+    "think.on": "on",
+    "guard.title": "配额",
+    "guard.perTurn": "单请求上限",
+    "guard.daily": "每日总量",
+    "guard.interval": "最小间隔（秒）",
+    "ctx.title": "上下文",
+    "ctx.limit": "窗口上限",
+    "ctx.limitHint": "任意整数，不限档位（如 100000 / 1048576）；0 = 启动时自动探测。探测到真实值时它只作为上限",
+    "ctx.target": "裁到预算的",
+    "ctx.spine": "任务骨架",
+    "ctx.spineLabel": "裁剪后生成六行摘要",
+    "art.title": "存档与文件外发",
+    "art.age": "保留天数",
+    "art.size": "容量上限（MB）",
+    "art.refsLabel": "允许云端读本地文件",
+    "art.refsHint": "唯一会主动把本地内容发出去的通道。开启必须配白名单。",
+    "art.roots": "白名单目录",
+    "srv.title": "监听",
+    "srv.host": "地址",
+    "srv.hostHint": "127.0.0.1 只给本机；0.0.0.0 给局域网（此时鉴权强制 enabled）",
+    "srv.port": "端口",
+    "keys.title": "项目 key",
+    "keys.desc": "发给智能体的那把。明文只在签发时出现一次，库里只存 hash。",
+    "keys.label": "标签",
+    "keys.created": "创建",
+    "keys.usage": "用量",
+    "keys.status": "状态",
+    "keys.issue": "签发",
+    "keys.active": "有效",
+    "keys.revoked": "已吊销",
+    "keys.revoke": "吊销",
+    "keys.none": "还没有 key",
+    "keys.confirmRevoke": "吊销后这把 key 立刻失效，确定？",
+    "keys.newPrefix": "新 key（只显示这一次，复制走）：",
+    "save.button": "保存并校验",
+    "chips.today": "今日 {n} 次",
+    "chips.unlimited": "不限",
+    "chips.base": "基础 {m}",
+    "chips.unset": "未配置",
+    "chips.adv": "进阶 {m}",
+    "chips.empty": "空槽位",
+    "chips.refsOn": "开",
+    "chips.refsOff": "关",
+    "test.probing": "探测中…",
+    "test.fail": "连不上：{d}",
+    "test.ok": "通",
+    "test.context": "窗口 {n}",
+    "test.models": "可用模型（点一下填入）：",
+    "test.filled": "已填入 {m}",
+    "test.unknown": " · 注意：所填模型不在上游列表里",
+    "save.saving": "保存中…",
+    "save.written": "已写入 <code>{p}</code>，共 {n} 项。",
+    "save.warn": "注意：{w}",
+    "save.needRestart": "改动需要重启网关才生效。",
+    "save.restartNow": "立即重启",
+    "save.saved": "已保存，等待重启",
+    "save.noChange": "没有改动",
+    "restart.confirm": "立即重启网关？\n\n重启后新配置才会生效。\n正在进行的请求会被中断。",
+    "restart.doing": "正在重启…",
+    "restart.done": "已重启，新配置生效",
+    "restart.timeout": "重启没有完成，页面会自动刷新",
+    "api.nonJson": "服务端返回了非 JSON",
+    "api.notLogged": "未登录"
+  },
+  en: {
+    "app.title": "steward console",
+    "login.title": "Token required",
+    "login.desc": "The token is printed at startup and stored in <code>state/console.token</code>. The console shares the gateway port, so it asks who you are once.",
+    "login.token": "Token",
+    "login.enter": "Enter",
+    "slot.base.title": "Base model",
+    "slot.base.tag": "Slot 1 · daily driver · most requests land here",
+    "slot.base.modelHint": "Local model: the model name or GGUF path, depending on how your server exposes it.",
+    "slot.base.timeoutHint": "How long before a request counts as failed. Local models are slow on the first token with long context — be generous. A timeout does not refund quota (the request already left).",
+    "slot.adv.title": "Advanced model",
+    "slot.adv.tag": "Slot 2 · billed per call · only used when the model asks",
+    "slot.adv.modelHint": "Cloud model: the exact name your provider recognises (e.g. <code>deepseek-chat</code>). A reasoning variant is usually <b>a different model name</b> (e.g. <code>deepseek-reasoner</code>); the thinking switch below only works with local servers such as llama.cpp / vLLM.",
+    "slot.adv.timeoutHint": "Raise it if the cloud is slow. A failed connection refunds quota; a connected request that times out does not.",
+    "slot.adv.emptyHint": "Leave the whole slot empty for local-only mode: <code>consult_cloud</code> is not injected, saving about 500 tokens per turn.",
+    "common.url": "URL",
+    "common.model": "Model ID",
+    "common.key": "Upstream key",
+    "common.protocol": "Protocol",
+    "common.timeout": "Timeout (s)",
+    "common.test": "Test connection",
+    "ph.modelLocal": "qwen3:8b (Ollama) / /models/x.gguf (llama.cpp)",
+    "ph.modelCloud": "deepseek-chat / gpt-4o-mini",
+    "ph.keyKeep": "empty = keep current",
+    "ph.keySet": "set (empty = keep)",
+    "ph.keyUnset": "not set",
+    "ph.roots": "One absolute path per line, e.g.\nC:\\projects\\demo\n/home/me/work",
+    "ph.keyLabel": "label, e.g. laptop / ci",
+    "think.off.rec": "off (recommended for reasoning models)",
+    "think.off": "off",
+    "think.auto": "auto",
+    "think.on": "on",
+    "guard.title": "Quota",
+    "guard.perTurn": "Per request",
+    "guard.daily": "Daily total",
+    "guard.interval": "Min interval (s)",
+    "ctx.title": "Context",
+    "ctx.limit": "Window ceiling",
+    "ctx.limitHint": "Any integer, no tiers (e.g. 100000 / 1048576); 0 = probe at startup. When a real value is probed this acts only as a ceiling.",
+    "ctx.target": "Trim to",
+    "ctx.spine": "Task spine",
+    "ctx.spineLabel": "Six-line summary after trimming",
+    "art.title": "Archive & file egress",
+    "art.age": "Keep days",
+    "art.size": "Size cap (MB)",
+    "art.refsLabel": "Let the cloud read local files",
+    "art.refsHint": "The only channel that sends local content out. Enabling it requires an allowlist.",
+    "art.roots": "Allowlisted dirs",
+    "srv.title": "Listener",
+    "srv.host": "Host",
+    "srv.hostHint": "127.0.0.1 for this machine only; 0.0.0.0 for the LAN (auth is then forced on)",
+    "srv.port": "Port",
+    "keys.title": "Project keys",
+    "keys.desc": "The key you hand to the agent. Shown once at issue time; only a hash is stored.",
+    "keys.label": "Label",
+    "keys.created": "Created",
+    "keys.usage": "Calls",
+    "keys.status": "Status",
+    "keys.issue": "Issue",
+    "keys.active": "active",
+    "keys.revoked": "revoked",
+    "keys.revoke": "Revoke",
+    "keys.none": "No keys yet",
+    "keys.confirmRevoke": "Revoking this key disables it immediately. Continue?",
+    "keys.newPrefix": "New key (shown once, copy it now):",
+    "save.button": "Save & validate",
+    "chips.today": "today {n} calls",
+    "chips.unlimited": "unlimited",
+    "chips.base": "base {m}",
+    "chips.unset": "not set",
+    "chips.adv": "advanced {m}",
+    "chips.empty": "empty slot",
+    "chips.refsOn": "on",
+    "chips.refsOff": "off",
+    "test.probing": "probing…",
+    "test.fail": "unreachable: {d}",
+    "test.ok": "ok",
+    "test.context": "window {n}",
+    "test.models": "Available models (click to fill): ",
+    "test.filled": "filled {m}",
+    "test.unknown": " · note: this model is not in the upstream list",
+    "save.saving": "saving…",
+    "save.written": "Written to <code>{p}</code>, {n} change(s).",
+    "save.warn": "Note: {w}",
+    "save.needRestart": "Changes take effect after a restart.",
+    "save.restartNow": "Restart now",
+    "save.saved": "Saved, waiting for restart",
+    "save.noChange": "No changes",
+    "restart.confirm": "Restart the gateway now?\n\nThe new config takes effect after restart.\nIn-flight requests will be interrupted.",
+    "restart.doing": "restarting…",
+    "restart.done": "Restarted, new config is live",
+    "restart.timeout": "Restart did not finish; the page will reload",
+    "api.nonJson": "Server returned non-JSON",
+    "api.notLogged": "Not signed in"
+  }
+};
+
+let LANG = "zh";
+try {
+  const saved = localStorage.getItem("steward.lang");
+  const zhBrowser = (navigator.language || "").toLowerCase().startsWith("zh");
+  LANG = (saved === "zh" || saved === "en") ? saved : (zhBrowser ? "zh" : "en");
+} catch (e) { LANG = "zh"; }
+
+const t = (key, vars) => {
+  const table = I18N[LANG] || I18N.zh;
+  let s = table[key] !== undefined ? table[key] : (I18N.zh[key] !== undefined ? I18N.zh[key] : key);
+  if (vars) for (const k in vars) s = s.split("{" + k + "}").join(vars[k]);
+  return s;
+};
+
+// 服务端校验文案是中文的，界面切到英文时把它们对上号。
+// 只映射控制台会显示给人看的那几句；日志和 API 响应不受影响。
+const ERR_EN = {
+  "口令不对": "Wrong token",
+  "尝试次数过多，请等一分钟": "Too many attempts, wait a minute",
+  "未登录": "Not signed in",
+  "来源校验失败": "Origin check failed",
+  "来源校验失败：只接受本机或同源发起的请求": "Origin check failed: local or same-origin only",
+  "先填地址": "Fill in the URL first",
+  "values 需要对象": "values must be an object",
+  "槽位只能是 base 或 advanced": "slot must be base or advanced",
+  "未设置": "not set"
+};
+const tr = (msg) => {
+  const s = String(msg == null ? "" : msg);
+  if (LANG === "zh") return s;
+  if (ERR_EN[s]) return ERR_EN[s];
+  // "配置还不能启动：xxx" 这类带前缀的整句
+  const prefix = "配置还不能启动：";
+  if (s.startsWith(prefix)) return "Config cannot start yet: " + s.slice(prefix.length);
+  return s;
+};
+
+const applyLang = () => {
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.title = t("app.title");
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+  const btn = $("#langBtn");
+  if (btn) {
+    btn.textContent = LANG === "zh" ? "EN" : "中文";
+    btn.setAttribute("aria-label", LANG === "zh" ? "Switch to English" : "切换到中文");
+  }
+};
+
+let LAST_STATE = null;
+let LAST_SAVE = null;
+
+// 保存结果横幅要能在切语言时重画，否则中文界面里会留着一段英文。
+const showRestartBar = (r) => {
+  const bar = $("#restartBar");
+  bar.classList.remove("hidden");
+  bar.innerHTML = t("save.written", { p: r.config_path, n: r.changed.length }) +
+    (r.warnings.length ? `<br>${t("save.warn", { w: r.warnings.map(tr).join(LANG === "zh" ? "；" : "; ") })}` : "") +
+    `<br>${t("save.needRestart")}`;
+  const btn = document.createElement("button");
+  btn.className = "primary";
+  btn.textContent = t("save.restartNow");
+  btn.onclick = doRestart;
+  bar.appendChild(btn);
+};
+
+const setLang = (next) => {
+  LANG = next;
+  try { localStorage.setItem("steward.lang", LANG); } catch (e) { /* 隐私模式下存不了，无所谓 */ }
+  applyLang();
+  if (LAST_STATE) render(LAST_STATE);   // chips / 密钥占位要跟着换
+  if (LAST_SAVE) showRestartBar(LAST_SAVE);
+  loadKeys().catch(() => {})
+};
 
 // 口令放在内存里，每个请求用自定义头带上。
 // 为什么不用 cookie：沙箱 iframe（预览面板、嵌入式工具）存不了 cookie，
@@ -275,9 +549,14 @@ const api = async (path, body) => {
   }
   const res = await fetch("console/api/" + path, opt);
   let data = {};
-  try { data = await res.json(); } catch (e) { data = { ok: false, error: "服务端返回了非 JSON" }; }
-  if (res.status === 401) { showLogin(); throw new Error(data.error || "未登录"); }
-  if (!data.ok) throw new Error(data.error || ("HTTP " + res.status));
+  try { data = await res.json(); } catch (e) { data = { ok: false, error: t("api.nonJson") }; }
+  if (res.status === 401) {
+    showLogin();
+    const err = new Error(tr(data.error || t("api.notLogged")));
+    err.auth = true;
+    throw err;
+  }
+  if (!data.ok) throw new Error(tr(data.error || ("HTTP " + res.status)));
   return data.data;
 };
 
@@ -326,13 +605,15 @@ const collect = () => {
 };
 
 const render = (s) => {
+  LAST_STATE = s;
   $("#ver").textContent = "v" + s.version;
   const chips = [];
   const advOn = s.slots.advanced.configured;
-  chips.push(`<span class="chip">今日 ${s.guard.daily_limit === 0 ? "不限" : s.guard.daily_limit} 次</span>`);
-  chips.push(`<span class="chip ${s.slots.base.configured ? "on" : "off"}">基础 ${s.slots.base.configured ? s.slots.base.model : "未配置"}</span>`);
-  chips.push(`<span class="chip ${advOn ? "on" : "off"}">进阶 ${advOn ? s.slots.advanced.model : "空槽位"}</span>`);
-  chips.push(`<span class="chip ${s.refs.enabled ? "on" : ""}">refs ${s.refs.enabled ? "开" : "关"}</span>`);
+  const daily = s.guard.daily_limit === 0 ? t("chips.unlimited") : s.guard.daily_limit;
+  chips.push(`<span class="chip">${t("chips.today", { n: daily })}</span>`);
+  chips.push(`<span class="chip ${s.slots.base.configured ? "on" : "off"}">${t("chips.base", { m: s.slots.base.configured ? s.slots.base.model : t("chips.unset") })}</span>`);
+  chips.push(`<span class="chip ${advOn ? "on" : "off"}">${t("chips.adv", { m: advOn ? s.slots.advanced.model : t("chips.empty") })}</span>`);
+  chips.push(`<span class="chip ${s.refs.enabled ? "on" : ""}">refs ${s.refs.enabled ? t("chips.refsOn") : t("chips.refsOff")}</span>`);
   chips.push(`<span class="chip">${s.server.host}:${s.server.port}</span>`);
   $("#chips").innerHTML = chips.join("");
 
@@ -358,8 +639,8 @@ const render = (s) => {
   setField("server.port", s.server.port);
 
   // 密钥只回报「有没有」，占位提示要能看出状态
-  document.querySelector('[data-f="base.api_key"]').placeholder = s.slots.base.has_key ? "已设置（留空＝不改）" : "未设置";
-  document.querySelector('[data-f="advanced.api_key"]').placeholder = s.slots.advanced.has_key ? "已设置（留空＝不改）" : "未设置";
+  document.querySelector('[data-f="base.api_key"]').placeholder = t(s.slots.base.has_key ? "ph.keySet" : "ph.keyUnset");
+  document.querySelector('[data-f="advanced.api_key"]').placeholder = t(s.slots.advanced.has_key ? "ph.keySet" : "ph.keyUnset");
 
   const warn = $("#warnings");
   if (s.warnings && s.warnings.length) {
@@ -369,7 +650,8 @@ const render = (s) => {
     warn.classList.add("hidden");
   }
 
-  if (s.env_exists) document.querySelector("#saveMsg").textContent = "";
+  // 注意：这里不能清 saveMsg。保存成功后 refresh() 会再进来一次，
+  // 一清就把「已保存」和英文的 "Saved" 一起抹掉了。
 };
 
 const loadKeys = async () => {
@@ -380,12 +662,12 @@ const loadKeys = async () => {
       <td>${k.label || "—"}</td>
       <td>${(k.created_at || "").replace("T", " ")}</td>
       <td>${k.calls || 0}</td>
-      <td>${k.enabled ? "有效" : "已吊销"}</td>
-      <td>${k.enabled ? `<button class="danger" data-revoke="${k.id}">吊销</button>` : ""}</td>
-    </tr>`).join("") : `<tr><td colspan="6" style="color:var(--muted)">还没有 key</td></tr>`;
+      <td>${k.enabled ? t("keys.active") : t("keys.revoked")}</td>
+      <td>${k.enabled ? `<button class="danger" data-revoke="${k.id}">${t("keys.revoke")}</button>` : ""}</td>
+    </tr>`).join("") : `<tr><td colspan="6" style="color:var(--muted)">${t("keys.none")}</td></tr>`;
   document.querySelectorAll("[data-revoke]").forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm("吊销后这把 key 立刻失效，确定？")) return;
+      if (!confirm(t("keys.confirmRevoke"))) return;
       await api("keys/revoke", { id: btn.dataset.revoke });
       loadKeys();
     };
@@ -397,9 +679,11 @@ const refresh = async () => {
     const s = await api("state");
     showApp();
     render(s);
-    loadKeys();
+    // 未登录时 keys 也会 401；这里吞掉，交给 refresh 的 auth 分支处理，
+    // 否则控制台里会多出一条没人接的 "Not signed in"。
+    loadKeys().catch(() => {});
   } catch (e) {
-    if (e.message !== "未登录") $("#saveMsg").textContent = e.message;
+    if (!e.auth) $("#saveMsg").textContent = e.message;
   }
 };
 
@@ -423,7 +707,7 @@ document.querySelectorAll("[data-test]").forEach(btn => {
   btn.onclick = async () => {
     const slot = btn.dataset.test;
     const out = $("#out-" + slot);
-    out.textContent = "探测中…";
+    out.textContent = t("test.probing");
     out.className = "out";
     const values = {
       base_url: getField(slot + ".base_url"),
@@ -434,13 +718,13 @@ document.querySelectorAll("[data-test]").forEach(btn => {
     try {
       const d = await api("test", { slot, values });
       if (!d.reachable) {
-        out.textContent = "连不上：" + (d.detail || ("HTTP " + d.status));
+        out.textContent = t("test.fail", { d: tr(d.detail || ("HTTP " + d.status)) });
         out.className = "out bad";
         return;
       }
       const bits = [];
-      if (d.context) bits.push("窗口 " + d.context);
-      out.textContent = "通" + (bits.length ? " · " + bits.join(" · ") : "");
+      if (d.context) bits.push(t("test.context", { n: d.context }));
+      out.textContent = t("test.ok") + (bits.length ? " · " + bits.join(" · ") : "");
       out.className = "out ok";
       // 上游给出的模型名直接列出来，点一下就填进「模型标识」。
       // 模型标识必须和服务商认的名字一字不差，这是最容易填错的地方。
@@ -449,18 +733,18 @@ document.querySelectorAll("[data-test]").forEach(btn => {
         dl.innerHTML = d.models.map(m => `<option value="${m}"></option>`).join("");
         const pick = document.createElement("div");
         pick.className = "out";
-        pick.innerHTML = "可用模型（点一下填入）：" +
+        pick.innerHTML = t("test.models") +
           d.models.slice(0, 8).map(m => `<a href="#" data-pick="${m}">${m}</a>`).join("、");
         pick.querySelectorAll("[data-pick]").forEach(a => {
           a.onclick = (ev) => {
             ev.preventDefault();
             document.querySelector(`[data-f="${slot}.model"]`).value = a.dataset.pick;
-            out.textContent = "已填入 " + a.dataset.pick;
+            out.textContent = t("test.filled", { m: a.dataset.pick });
           };
         });
         out.parentElement.appendChild(pick);
       }
-      if (d.model_known === false) out.textContent += " · 注意：所填模型不在上游列表里";
+      if (d.model_known === false) out.textContent += t("test.unknown");
     } catch (e) {
       out.textContent = e.message;
       out.className = "out bad";
@@ -471,24 +755,16 @@ document.querySelectorAll("[data-test]").forEach(btn => {
 $("#saveBtn").onclick = async () => {
   const msg = $("#saveMsg");
   msg.className = "msg";
-  msg.textContent = "保存中…";
+  msg.textContent = t("save.saving");
   try {
     const r = await api("save", { values: collect() });
-    const bar = $("#restartBar");
     if (r.changed.length) {
-      bar.classList.remove("hidden");
-      bar.innerHTML = `已写入 <code>${r.config_path}</code>，共 ${r.changed.length} 项。` +
-        (r.warnings.length ? `<br>注意：${r.warnings.join("；")}` : "") +
-        `<br>改动需要重启网关才生效。`;
-      const btn = document.createElement("button");
-      btn.className = "primary";
-      btn.textContent = "立即重启";
-      btn.onclick = doRestart;
-      bar.appendChild(btn);
-      msg.textContent = "已保存，等待重启";
+      LAST_SAVE = r;
+      showRestartBar(r);
+      msg.textContent = t("save.saved");
       msg.className = "msg ok";
     } else {
-      msg.textContent = "没有改动";
+      msg.textContent = t("save.noChange");
     }
     refresh();
   } catch (e) {
@@ -499,10 +775,10 @@ $("#saveBtn").onclick = async () => {
 
 // 立即重启：先确认，再让网关自己重启，最后等它回来。
 const doRestart = async () => {
-  if (!confirm("立即重启网关？\n\n重启后新配置才会生效。\n正在进行的请求会被中断。")) return;
+  if (!confirm(t("restart.confirm"))) return;
   const msg = $("#saveMsg");
   msg.className = "msg";
-  msg.textContent = "正在重启…";
+  msg.textContent = t("restart.doing");
   try {
     await api("restart", {});
   } catch (e) {
@@ -516,14 +792,16 @@ const doRestart = async () => {
     try {
       const probe = await fetch("console/api/state", { credentials: "same-origin", headers: TOKEN ? { "X-Console-Token": TOKEN } : {} });
       if (probe.status === 200) {
-        msg.textContent = "已重启，新配置生效";
+        LAST_SAVE = null;          // 已经重启，横幅不再需要用旧结果重画
+        $("#restartBar").classList.add("hidden");
+        msg.textContent = t("restart.done");
         msg.className = "msg ok";
         refresh();
         return;
       }
     } catch (e) { /* 还在重启，继续等 */ }
   }
-  msg.textContent = "重启没有完成，页面会自动刷新";
+  msg.textContent = t("restart.timeout");
   msg.className = "msg bad";
   setTimeout(() => location.reload(), 1500);
 };
@@ -533,7 +811,7 @@ $("#newKey").onclick = async () => {
     const d = await api("keys/new", { label: $("#keyLabel").value.trim() });
     const box = $("#newKeyBox");
     box.style.display = "block";
-    box.innerHTML = `新 key（只显示这一次，复制走）：<br><code>${d.token}</code>`;
+    box.innerHTML = `${t("keys.newPrefix")}<br><code>${d.token}</code>`;
     $("#keyLabel").value = "";
     loadKeys();
   } catch (e) {
@@ -542,9 +820,13 @@ $("#newKey").onclick = async () => {
   }
 };
 
+// 语言切换：切完立刻重画动态部分（chips / 密钥表）。
+$("#langBtn").onclick = () => setLang(LANG === "zh" ? "en" : "zh");
+
 // 页面刷新后如果还记得口令（普通浏览器的 sessionStorage），直接进；
 // 沙箱里存不了就退回登录框，不影响使用。
 try { TOKEN = sessionStorage.getItem("steward-token") || ""; } catch (e) { TOKEN = ""; }
+applyLang();
 refresh();
 </script>
 </body>
