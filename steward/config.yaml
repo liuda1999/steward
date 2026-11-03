@@ -1,0 +1,110 @@
+# steward 配置
+# 敏感项走 ${ENV_VAR}，真实值放同目录 .env，不要写死在这里。
+
+server:
+  host: 127.0.0.1
+  port: 8010
+  api_key: ""            # 留空。下游鉴权用 auth 签发的项目 key
+  log_level: info
+
+auth:                    # 项目自己签发的 key：对外只暴露这一把
+  mode: required         # required=必须带项目 key；off=关闭鉴权（仅本机调试）
+  keys_file: state/keys.json
+  auto_issue: true       # 一把都没有时，启动自动签发并打印一次
+
+# 槽位一：基础模型 —— 日常主力，绝大多数请求由它完成
+base:
+  base_url: http://127.0.0.1:11434/v1    # Ollama 默认；LM Studio 用 :1234；llama.cpp 用 :8080
+  api_key: ${BASE_API_KEY:-}             # 上游令牌。不校验可留空，但字段保留 ——
+                                         # 局域网里给多台设备用时，这常常是唯一的门外锁
+  model: your-base-model                 # llama.cpp 一般填 GGUF 路径，Ollama 填模型名
+  protocol: chat                         # chat | responses（新版 llama.cpp / vLLM 也可用后者）
+  thinking: "off"                        # auto | off | on。推理型模型建议 off：
+                                         # 路由判断不需要思维链，开着会把 max_tokens 烧光
+  timeout_s: 600                         # 30B 长上下文首字慢，给足
+  min_max_tokens: 1024                   # 客户端 max_tokens 太小时抬上来，防推理 token 截断工具参数
+
+# 槽位二：进阶模型 —— 只在复杂任务时调用，按次计费，受配额硬限制
+advanced:
+  base_url: https://your-provider.example.com/v1
+  api_key: ${ADVANCED_API_KEY}
+  model: your-advanced-model
+  protocol: chat
+  timeout_s: 120
+  max_tokens: 4096
+
+guard:
+  max_calls_per_turn: 2   # 单次请求内最多问进阶模型几次（核心闸）
+  max_tool_rounds: 4      # 基础模型最多循环几轮，超过强制收尾
+  min_interval_s: 30      # 两次进阶调用最小间隔（秒），防抖
+  daily_limit: 5          # 每日总次数，-1 表示不限（不建议）
+  dedupe: true            # 同一请求里重复问题直接拒
+  similarity: 0.92        # 换说法重复的判定阈值
+  max_brief_chars: 6000   # 委托单上限，超了截断
+  max_result_chars: 16000 # 交付物内联上限（开了 artifacts 之后基本走不到）
+  state_file: state/usage.json
+
+# 上下文治理：网关负责记账，因为只有它知道本地模型真能装多少。
+# 本地窗口 64K/128K/256K 不固定，云端 1M+，不记账就必然在长任务里爆。
+context:
+  enabled: true
+  ctx_limit: 0            # 0=自动探测（llama.cpp /props、vLLM max_model_len、LM Studio）
+  usable_ratio: 0.85      # 名义窗口里真正好用的比例；长上下文中段信息本来就弱
+  target_ratio: 0.65      # 一次裁剪砍到预算的多少。砍得深撑得久，但前缀重算更贵
+  min_clear_tokens: 8000  # 一次至少清这么多，否则不值得让 KV 缓存失效
+  reserve_output: true    # 从输入预算里扣掉 base.max_tokens，留出生成空间
+  safety_tokens: 512
+  strip_reasoning: true   # 历史思维链只在当轮有用，跨轮纯浪费 token
+  strip_images: true
+  tool_digest: true       # 旧工具输出压成 头+尾+错误行，全文落盘留指针
+  tool_head_lines: 40
+  tool_tail_lines: 40
+  keep_recent: 4          # 最近几条永不裁剪
+  overflow_retry: true    # 上游报装不下时压缩后重试，而不是让整轮工具调用白做
+  state_file: state/ctx.json
+  # 任务骨架：裁剪把中间历史删掉后，把那片区域提炼成 6 行留在 system 里。
+  # 不这么做，模型只看到「压缩了 N 条」，会重试已经否决过的方案。
+  spine: true
+  spine_min_dropped: 4000 # 丢得少于这么多 token 就不值得为它调一次本地模型
+  spine_max_chars: 12000  # 喂给提炼模型的原文上限（头尾各取一段）
+  spine_timeout_s: 30     # 超时就退回机械骨架，不阻塞主请求
+  spine_max_tokens: 900
+  spine_cache_size: 64    # 缓存多少份骨架（按压缩区域 hash）
+  spine_state_file: state/spine.json
+
+# 交付物外置：16K 字的方案全文落盘，上下文只收 ~500 token 的摘要 + 目录 + 路径
+artifacts:
+  enabled: true
+  dir: .steward/artifacts   # 放在客户端工作目录内，智能体自己的读文件工具才打得开
+  inline_chars: 800
+  min_store_chars: 1500   # 短于此不值得存档（摘要可能比原文还长）
+  toc: true
+  absolute: true          # 摘要里的路径用绝对路径。关掉才用相对路径，但只能保证
+                          # 网关和智能体同一个 cwd 时对得上
+  # 回收：存档只增不减，长期跑必然涨。两个上限取先到者，0 表示不启用该项
+  max_age_days: 30
+  max_total_mb: 512
+  clean_interval_s: 600   # 两次清理至少隔这么久，避免每次写都扫盘
+  index_max_lines: 5000   # index.jsonl 的保留行数
+  batch_max_chars: 500000 # 一次裁剪的工具输出合并成一个文件的上限，超了再分片
+refs:
+  # 让进阶模型直接读本地文件。默认关闭：这是网关里唯一会把本地内容主动发出去的通道。
+  # 开了之后必须配 roots，否则启动时 validate() 会拒绝。
+  enabled: false
+  roots: []               # 白名单根目录，绝对路径。只有落在这里面的文件才可能被读出
+                          # 例：[/home/me/proj]
+  max_file_bytes: 65536   # 单文件上限，超了读前缀并标注截断
+  max_total_chars: 120000 # 一次委托所有引用合计上限（约 38K tokens）
+  max_files: 20
+  grep_context: 3         # grep 命中行上下各带几行
+  deny: []                # 空则用内置黑名单（.env / *.pem / id_rsa* / *secret* / .git 等）
+  audit_file: state/refs.jsonl
+
+public_model: auto        # 客户端看到的模型名，网关不按它路由
+model_aliases: [local, steward]
+
+# 留空则用内置默认文本。想改规则改这里，不用动代码。
+prompt:
+  system_text: ""
+  tool_description: ""
+  force_finish_text: ""

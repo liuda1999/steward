@@ -1,0 +1,40 @@
+# 上游凭据，绝不能进仓库
+.env
+.env.*
+*.key
+*.pem
+
+# 网关自己签发的 key（只存 hash，但也不该提交）+ 运行时状态
+state/*.json
+state/*.tmp
+state/*.log
+
+# 交付物与工具输出存档（可能是源码片段，也不该进仓库）
+.steward/
+.cloudbridge/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 测试
+.pytest_cache/
+.pytest_tmp/
+.coverage
+htmlcov/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# 临时文件
+*.bak
+*.orig
+*.rej

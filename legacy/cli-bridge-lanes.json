@@ -1,0 +1,48 @@
+[
+  {
+    "//": "本地 lane：LM Studio 的 OpenAI 兼容 HTTP 服务（你的本地 API）。cost=free，永远优先走这条。",
+    "//1": "如果你用的是 Ollama，可以整条删掉 —— Ollama 是 cli-bridge 的内置 lane，不用配。",
+    "key": "mylocal",
+    "display": "Local Model (LM Studio, OpenAI-compatible)",
+    "bin": "cli-bridge-openai",
+    "model_flag": "--model",
+    "default_model": "在此填你的本地模型 ID",
+    "cost": "free",
+    "experimental": true,
+    "ask": [
+      "--base-url",
+      "http://127.0.0.1:1234/v1",
+      "{task}"
+    ],
+    "note": "本地不需要 key，所以不传 --key-env。LM Studio 要在 Developer 面板里把本地服务开起来，端口通常是 1234。"
+  },
+  {
+    "//": "云端 lane：你自己的云 API（OpenAI 兼容端点）。只在复杂设计 / 疑难分析时才调，配了 daily limit 兜底。",
+    "//1": "key 从环境变量 CLOUD_API_KEY 读取，不会出现在 argv 里（ps 看不到明文）。",
+    "//2": "availability_env：没设置 CLOUD_API_KEY 之前这条 lane 自动隐藏，不会误触发付费。",
+    "key": "mycloud",
+    "display": "Cloud Designer (OpenAI-compatible API)",
+    "bin": "cli-bridge-openai",
+    "model_flag": "--model",
+    "default_model": "在此填你的云端强模型 ID",
+    "cost": "paid",
+    "availability_env": "CLOUD_API_KEY",
+    "models": [
+      "--list-models",
+      "--base-url",
+      "https://你的云端API地址/v1",
+      "--key-env",
+      "CLOUD_API_KEY"
+    ],
+    "experimental": true,
+    "install_hint": "export CLOUD_API_KEY=... （bridge 随 cli-bridge 一起装，无需额外安装）",
+    "note": "换 base-url + key-env 就能接任何 OpenAI 兼容厂商：OpenRouter / DeepSeek / 智谱 / 月之暗面 / 硅基流动 / 自建网关都行。",
+    "ask": [
+      "--base-url",
+      "https://你的云端API地址/v1",
+      "--key-env",
+      "CLOUD_API_KEY",
+      "{task}"
+    ]
+  }
+]

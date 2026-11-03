@@ -1,0 +1,35 @@
+{
+  "//": "把 mcpServers.cli-bridge 这一整段拷进你智能体的 MCP 配置文件即可。",
+  "//1": "常见位置：Claude Code = ~/.claude.json 或项目 .mcp.json；Codex CLI = ~/.codex/config.toml；",
+  "//2": "opencode = ~/.config/opencode/opencode.json；Cursor/VS Code = .vscode/mcp.json 或 MCP 设置面板；",
+  "//3": "Cline / Roo Code / Kilo Code = 扩展的 MCP Settings 面板。",
+  "//4": "改完必须重启智能体会话才生效。",
+  "mcpServers": {
+    "cli-bridge": {
+      "command": "uvx",
+      "args": ["cli-bridge-mcp"],
+      "env": {
+        "CLI_BRIDGE_LANES_FILE": "./cli-bridge-lanes.json",
+
+        "//PROFILE": "saver = 只有免费 lane 参与 fan-out，付费 lane 必须被显式点名才动。这是严格控量的第一道闸。",
+        "CLI_BRIDGE_PROFILE": "saver",
+        "CLI_BRIDGE_GUARD": "strict",
+
+        "CLI_BRIDGE_MYCLOUD_COST": "paid",
+
+        "//DAILY_LIMIT": "硬闸：每天最多 N 次云端调用，超了直接拒绝，不是提醒。先按 5 起步，跑一周看够不够。",
+        "CLI_BRIDGE_MYCLOUD_DAILY_LIMIT": "5",
+
+        "//MIN_INTERVAL_S": "两次云端调用之间的最小间隔（秒），防连击。设 60 意味着一分钟最多烧一次。",
+        "CLI_BRIDGE_MYCLOUD_MIN_INTERVAL_S": "60",
+
+        "//CREDITS": "可选。填你的实际单价（每 1K token 多少 credit），配合 set_lane_cost 工具记账。",
+        "//CLI_BRIDGE_MYCLOUD_CREDITS_PER_1K": "0.001",
+
+        "CLI_BRIDGE_MYLOCAL_COST": "free",
+
+        "CLOUD_API_KEY": "在这里填你的云端API密钥"
+      }
+    }
+  }
+}
