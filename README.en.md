@@ -7,8 +7,8 @@
 [![Tests](https://img.shields.io/badge/tests-468%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
-> Your local model is the workhorse; the cloud is the specialist you call in. steward owns everything in between: when spending money is worth it, whether the context still fits, and how to keep the archive from filling your disk.
-> **Open `http://127.0.0.1:27418/` for the console** — fill both slots, tune the quota, issue project keys, never touch the command line.
+> Your local model is the workhorse; the cloud is the specialist you call in. steward is the gateway in between: when spending is worth it, whether the window still fits, and where deliverables go.
+> **Open <http://127.0.0.1:27418/> for the console** — fill the slots, tune quotas, issue keys, never touch the command line.
 
 ```
 agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local model (default)
@@ -18,634 +18,249 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 | | |
 |---|---|
 | Version | **v1.5.0** ([release notes](docs/releases/v1.5.0.md)) |
-| License | **Apache-2.0** ([LICENSE](LICENSE) · [NOTICE](NOTICE)) — commercial use, modification, closed-source distribution, with a patent grant |
-| Shape | single-process FastAPI gateway, stateless; web console on the same port |
-| Default port | 27418 |
-| Wire protocol | `/v1/chat/completions` + `/v1/responses` (converted both ways) |
-| Dependencies | fastapi / uvicorn / httpx / PyYAML — no database |
-| Size | 5,824 lines of Python (comments included), 14 modules |
-| Tests | 468: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 10 · console 44 · net policy 7 · cloud params 4 · deployment 33 · free window sizing 12 · the rest unit and end-to-end |
-| Per-turn injection | 531 tokens (system + quota + tool definition) |
+| Protocol | `/v1/chat/completions` + `/v1/responses`, OpenAI-compatible |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
+| Shape | single-process FastAPI, no database; web console on the same port |
+| Default port | 27418 |
+| License | **Apache-2.0** — commercial use, modification, closed-source distribution, with a patent grant |
 
-**The name means "steward".** It does not decide what you do; it keeps three things: the books (can you afford this call), the window (does it still fit), the archive (does it survive on disk). Those three are exactly what breaks when a local model runs a long task — and exactly what the old name `cloudbridge` could not express: a bridge moves traffic, it does not exercise restraint.
-
----
-
-## 1. The problem
-
-Using a local model as the daily driver and the cloud as backup is not a hard idea. Three things are hard.
-
-**1. Who decides "should we spend this money".**
-
-Gateway-side routing (scoring the request, classifying it, redirecting it) is cheap and controllable, but it judges the **request text**, not the **model's actual confidence**. What it calls hard, the model may finish in one second; what it calls easy, the model may not know how to start.
-
-So this takes the other path: put a `consult_cloud` tool in the tool list and let the model ask. But the guardrails live **in the gateway, not in the prompt**. The model may judge "I am not sure about this"; whether it may spend this call is counted by the gateway.
-
-**2. The local window is far smaller than the cloud's, and its size is not fixed.**
-
-Cloud models are commonly 1M+; local ones are often 64K / 128K / 256K, and `--parallel` divides that (`-c 131072 --parallel 4` gives 32,768 per slot). **Those three are examples, not tiers**: the window is any integer (`context.ctx_limit`, e.g. 100000 or 1048576). The gateway probes the model for the real value at startup and hard-codes no enumeration.
-
-Worse: llama.cpp with `--context-shift` **drops from position 0**, so the system prompt and tool definitions die first; Ollama truncates from the head and only writes a server-side log. Both return **HTTP 200**. Exceeding the window is not an error — it just makes the model quietly dumber.
-
-**3. Cloud output is long; one round trip back into context eats 12% of the local window.**
-
-A 16K-character deliverable is roughly 11K tokens, resident forever as a `role=tool` message. Ask twice in one turn and the window is gone.
-
-Those three things, plus "will three months of running fill the disk", are the whole project.
+**The name means "steward".** It does not decide what you do; it keeps three things: the books (can you afford this call), the window (does it still fit), the archive (does it survive on disk).
 
 ---
 
-## 2. Three diagrams
+## 1. What it solves
+
+Running a local model as the daily driver with the cloud as backup is easy to state and hard to run. Four things get in the way:
+
+| Problem | What steward does |
+|---|---|
+| When is spending worth it? | It does not judge difficulty for the model. It exposes a `consult_cloud` tool the model may call, and **counts whether that call is affordable** |
+| The local window is too small? | Probes the real window at startup (honouring `--parallel` splitting), counts exactly, trims in tiers, and summarises large drops into a six-line task spine |
+| Cloud output eats the window? | Deliverables over 1,500 chars are written to disk; only a ~500-token summary and the file path go back into history |
+| The disk fills up over months? | Deliverables are archived by type and content hash, and reclaimed by dated directory |
+
+The dangerous part of overflow is that **it does not raise an error**: llama.cpp with `--context-shift` drops from position 0, so the system prompt and tool definitions die first; Ollama truncates from the head and only writes a server-side log; both return HTTP 200. The window has to be accounted for by the gateway, because the upstream will not tell you.
+
+Window size has no tiers: `context.ctx_limit` is any integer (100000 or 1048576 both work). 64K / 128K / 256K are common examples, **not tiers**; the real value is probed at startup by default.
+
+---
+
+## 2. Architecture
 
 ### 2.1 Deployment topology
 
 ![Deployment topology](docs/topology.svg)
 
-How to read it:
-
 - The agent sees one endpoint and one `st-` key. It does not know how many models sit behind it.
-- Routing is decided inside the gateway: **local by default**; traffic leaves the machine only when the model calls `consult_cloud`.
-- The cloud receives the brief plus files expanded from `refs` — **never the full conversation history**.
-- Three kinds of local state: `artifacts/` (full deliverables), `state/` (quota and estimator coefficients), and the files inside the refs allowlist.
+- Local is the default. Traffic leaves the machine only when the model calls `consult_cloud`, and the cloud sees just the brief plus `refs`-expanded files — **never the full history**.
 
 ### 2.2 Module structure
 
 ![Module structure](docs/structure.svg)
 
-Three layers, all in one process:
-
 | Layer | Modules | Responsibility |
 |---|---|---|
-| Decision | `guard.py` / `prompts.py` / `keys.py` / `refs.py` | May this call proceed, is the brief good enough, whose key is this, may this file leave |
-| Context | `context.py` / `spine.py` / `artifacts.py` | Measure the window, trim, keep a spine, archive and reclaim |
-| Transport | `upstream.py` / `cloud.py` / `responses.py` | Two upstream clients plus protocol conversion |
-
-Why not split this into an MCP server — see `ARCHITECTURE.md`: the tool loop has to live in the gateway, because only the gateway knows both **how much the client sent** and **how much the local model can actually hold**. That information gap is the premise of the whole design, and an MCP server does not have it.
+| Decision | `guard` / `prompts` / `keys` / `refs` | whether to allow, whether the brief qualifies, whose key this is, whether a file may leave |
+| Context | `context` / `spine` / `artifacts` | measure the window, trim, keep a spine, archive and reclaim |
+| Transport | `upstream` / `cloud` / `responses` | two upstream clients plus protocol conversion |
 
 ### 2.3 Request flow
 
 ![Request flow](docs/flow.svg)
 
-How to read it:
-
-- **Solid** lines are the normal path; **dashed** lines are paths that spend nothing (trim, reject, blocked by a gate).
-- Trimming happens **inside the loop**, before every request — deliverables and tool results grow mid-loop. Checking only at the entrance means round four blows up.
-- The cloud call is an optional step inside the loop. If the model does not call it, the turn ends there.
-
-> All three diagrams are generated by `scripts/gen_diagrams.py`. Change a module or a flow and re-run it; the pictures cannot drift behind the code. The generator self-checks three things: text overflowing its box, elements outside the canvas, arrows crossing boxes.
+- Trimming runs **inside the tool loop**, every round — deliverables and tool results grow mid-loop, and checking only at entry lets the window blow up later.
+- The cloud call is one optional step in that loop. If the model does not call it, the turn simply ends.
 
 ---
 
-## 3. Three key designs
+## 3. Deploy
 
-### 3.1 When to delegate: judge facts, not "complexity"
-
-The first criterion was "use it only when the task is genuinely complex and local attempts still leave you unsure". The problem: **"complex" is subjective**, so the model cannot decide with it and ends up calling on vibes. The prohibition list also contained "you already know the answer and just don't feel like typing" — a judgement no model can honestly make about itself.
-
-Replaced with four questions it can actually answer:
-
-| Criterion | Meaning |
-|---|---|
-| Do I have enough premises to decide? | If not, go look it up; don't ask with half the information |
-| Can I write the steps with failure criteria right now? | If yes, write them yourself |
-| Is the cost of being wrong irreversible? | Data migration / bulk delete / production change — **must ask**, even when confident |
-| Have I actually tried and failed? | Try first; ask with the real error |
-
-Plus two mechanisms:
-
-- **Quality gate**: empty `ask` or over 400 characters, five-line format without `goal`, `tried` set to `none` for `diagnosis`/`review`, or plain prose under 40 characters — sent back for a rewrite, **not counted, not charged**. At most two rejections per turn, to stop it spinning in place.
-- **Visible quota**: "how many calls are left today" is written into the system message every turn. Saying it only after a rejection means that turn was already wasted.
-
-The bar is deliberately loose: badly formatted but sufficient content **passes**. The cloud can work from prose; an extra round trip just burns local time.
-
-**Injection cost is capped by tokens.** This gateway wraps the agent's own prompt, so every injected token is pure addition. Per-turn fixed injection is held at **531 tokens**:
-
-| Component | Cost |
-|---|---|
-| system positioning (one line of attitude) | 21 tok |
-| quota note (changes every turn) | 12 tok |
-| tool definition (description + parameter schema) | 498 tok |
-
-`tests/test_prompts.py` asserts hard upper bounds. Before trimming it was 804 — what got cut was duplication (positioning stated in both system and tool description, the five-line brief format written twice) and meta-commentary explaining its own structure. Not one criterion was removed.
-
-### 3.2 Context governance: the local window is the real bottleneck
-
-Four steps, in the order they happen.
-
-**Probe the real window.** `/props` → `/v1/models` → `/api/v0/models` → config → conservative default, tried in that order, and `total_slots` is read because `--parallel` divides `n_ctx`.
-
-**Count exactly.** Character heuristics underestimate code and JSON by 25–40% (`"1234567890"` is 10 tokens). So the upstream `/tokenize` is preferred for exact values; estimation is only a fallback, self-calibrated by EWMA against every returned `usage.prompt_tokens`.
-
-**Trim in levels.** Cheapest first; the first four never call a model (level 3 writes to disk but runs no inference):
-
-| Level | What is touched | Recoverable |
-|---|---|---|
-| 1 | Reasoning content from earlier turns | Yes (already spent) |
-| 2 | Images replaced with placeholders | No |
-| 3 | Old tool output → head + tail + error lines, full text archived | Yes (read the file) |
-| 4 | Whole `tool_call` + result pairs dropped, oldest first | Yes (archived) |
-| 5 | Hard truncation | No |
-| 6 | Structural repair (drop orphan tool messages, strip dangling `tool_calls`) | — |
-
-Level 6 was added later: hard truncation deletes by position and ignores pairing, so it can delete an assistant message carrying `tool_calls` while keeping its tool result. llama.cpp tolerates that; vLLM and strict Qwen templates return **400**.
-
-Also added: **the first user message must survive** — that is the task itself. Only the last user message used to be protected, so hard truncation would delete the goal outright and leave the model reconstructing its purpose from a chunk of test logs. That defect was reproduced on real data; there is now a regression test watching it.
-
-**Task spine.** Trimmed to 10%, all the model holds is one line saying "226 messages were compressed". It knows there is a gap but not what is in it, so it either retries a rejected approach or invents one with "as we discussed earlier". So when a large region is dropped, the gateway asks the local model to distill it into six lines:
-
-```
-goal: change this service's quota from per-call to per-token, and add tests.
-constraints: key format must not change
-facts: prefill measured 1305 tok/s; single slot n_ctx=131072
-rejected: Redis for counting (ops will not approve)
-current: guard.py done, tests not run
-next: add metering cases to test_guard.py
-```
-
-`rejected` and `facts` are the valuable ones: lose the first and the model retries a known failure; lose the second and it re-measures. Neither can come from a mechanical summary — that requires judging which sentence is a conclusion and which is process. So a model really is called here: measured 7–13 seconds, at most once per request.
-
-### 3.3 Deliverable archiving and reclamation
-
-A deliverable over 1,500 characters is **written to disk first**, and only a ~500-token digest goes back into context (id + absolute path + heading outline + first 800 characters). About 500 tokens replacing 30,000.
-
-The point is not the digest, it is that **the path lives in the agent's own filesystem** — it has file-reading tools and can go look when it needs detail.
-
-Three constraints learned from long use:
-
-- **Uniform header**: every file starts with `kind / turn / created / chars`. Readable by humans, parseable by scripts.
-- **Path contains only date + kind + content hash**: the turn goes in the header only. Otherwise the same content is stored once per turn.
-- **Batching and reclamation**: one trim can compress hundreds of tool outputs; writing each separately produced 113 files. Merged into one file with line anchors it is **2**, same total size. Reclamation decides by the **date in the directory name**, not mtime — a directory that is appended to daily would otherwise always look new and never be deleted.
-
----
-
-## 4. Quick start
+**Requires Python 3.11+.** No database, no external services.
 
 ```bash
 git clone https://github.com/liuda1999/steward.git
 cd steward
-
-# One command: check the environment, install deps, generate the config, start
 ./scripts/start.sh          # Windows: scripts/start.bat
 ```
 
-It reports each step — Python version, dependencies, config, config validation — then
-prints the console URL and the one-time token:
+It checks the environment, generates a config, starts the gateway, and prints the console URL with a one-time token:
 
 ```
-  steward 1.5.0  startup check
-
   [1/4] Python 3.13.14  OK
   [2/4] dependencies  OK
-  [3/4] config  /path/to/steward/config.yaml
-  [4/4] config check  OK
+  [3/4] first run, config generated: /path/to/steward/config.yaml
+  [4/4] config valid  OK
+
+  endpoint http://127.0.0.1:27418/v1
+  console  http://127.0.0.1:27418/
+  token    xxxxxxxxxxxxxxxx
 ```
 
-(The progress lines are printed in Chinese; the numbers and the paths are not.)
+The first run writes `config.yaml` into the current directory from the bundled template, so a fresh clone needs no manual config step.
 
-**Then open <http://127.0.0.1:27418/>, paste the token, fill both slots, and hit "save and restart".**
+### 3.1 First-time configuration
 
-Leaving the **advanced slot empty is fine** — and it is the cheapest setting: without it
-`consult_cloud` is never injected, which saves roughly 500 tokens per turn and cannot
-accidentally call a cloud API. Get it working locally first, then decide about the cloud.
+Open <http://127.0.0.1:27418/>, paste the token, fill the two slots, and hit "save and restart". Each slot has a "test connection" button that reads the upstream `/v1/models` and lists the real model names — click one to fill it in.
 
-> On first start a `config.yaml` is generated in the current directory from the shipped
-> template. So `git clone` is followed by nothing else — previously this step had to be
-> guessed, and it was the easiest one to get stuck on.
-
-The CLI is still there, and equivalent:
+Prefer the CLI:
 
 ```bash
-python -m steward init          # interactive wizard, good for one-shot setup
-python -m steward serve --check # validate the config without starting
+python -m steward init            # interactive wizard
+python -m steward serve --check   # validate the config without starting
 ```
 
-Install it as a command instead (optional — afterwards you just type `steward`):
+Install it as a global command (optional):
 
 ```bash
 pip install -e .
-steward serve
+steward start
 ```
 
-No local model yet? Point both `base_url`s at any OpenAI-compatible endpoint; `python -m steward test` tells you whether they answer.
-
-Once running:
-
-```bash
-python -m steward test          # connectivity of both slots
-python -m steward ctx           # real window and input budget
-```
-
-The client side needs two lines:
+### 3.2 Connect a client
 
 ```python
 base_url = "http://127.0.0.1:27418/v1"
-api_key  = "st-..."                 # printed once by init, only the hash is stored
+api_key  = "st-..."        # shown once at issue time; only the hash is stored
 ```
 
-**The key is shown exactly once.** Lose it and issue a new one, revoke the old — the gateway stores only a hash and cannot recover it. The console's *project key* panel issues and revokes them, with the same one-time display.
+**A lost key can only be reissued** — the gateway stores a sha256 and cannot recover it. The console's *project key* panel issues and revokes them, with the same one-time display.
 
-On first connection, run `python -m steward ctx`: it prints the real window, the input budget and the counting method. Most "the model suddenly got dumb" problems are visible in those three numbers.
+### 3.3 LAN, autostart, upgrades
 
-### 4.0 Deployment and operations
+See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**: sharing on a LAN, systemd / Task Scheduler, reverse proxy, upgrade and rollback, troubleshooting.
 
-Sharing over the LAN, running as a service at boot, systemd / Task Scheduler units, the
-upgrade procedure and the troubleshooting table all live in
-**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The section above is all you need to get it running.
+---
 
-### 4.1 Port
+## 4. Using it
 
-Default **27418**. Three rules, look at them before changing it:
+### 4.1 Console
 
-| Rule | Why |
-|---|---|
-| Not 80 / 443 / 8080 / 8000 / 3000 | Something usually owns those already; a collision reports only `address in use` |
-| Not a sequential number like 12345 / 56789 | When two services collide you cannot tell whose port it is |
-| Between 1024 and 49151 | Below 1024 needs root; above 49151 is the Windows ephemeral range, where random outbound connections grab it |
-
-A bad port does not block startup, but it is flagged:
-
-```
-[config] note  server.port=8080 is a common port and is easily taken by another service; consider 27418
-```
-
-A real collision is louder than `shutdown complete`:
-
-```
-[port] 127.0.0.1:27418 is already in use (PID 13028, tasklist /FI "PID eq 13028" shows the name).
-[port] Stop it, or pass --port to use another (default 27418, or edit server.port in config.yaml).
-```
-
-Temporary override without editing config: `python -m steward serve --port 27xxx`.
-
-### 4.2 Two slots — you may fill just one
-
-`base` and `advanced` are equal slots, not "local" and "cloud".
-
-| Configuration | Result |
-|---|---|
-| Both filled | Full capability. Daily work on base, hard problems on advanced after the model asks |
-| Only base | **Legal.** Pure-local mode: `consult_cloud` is not injected, saving ~500 tokens per turn |
-| Only advanced | Will not start. Without a base model there is no model at all |
-| Half filled (URL but no model name) | Treated as an empty slot, with a warning at startup |
-
-An empty slot is **deliberately legal**, because "I only have one local model" is the most common situation. The gateway will not hand the model a tool that is guaranteed to refuse it — those 500 tokens are paid again every turn.
-
-```bash
-python -m steward serve --check -c config.yaml
-# [config] note  advanced slot is empty (missing advanced.base_url): consult_cloud not injected… saves ~500 tokens per turn
-# [config] OK  base=http://127.0.0.1:11434/v1 model=qwen3 protocol=chat
-# [config]     advanced=empty slot (consult_cloud not injected)
-```
-
-`GET /health` reports the same state as `advanced.configured: false`.
-### 4.5 How to fill in the model identifier — either slot can point at a cloud API
-
-**"Model identifier" is the exact string your provider knows.** The gateway does not interpret or correct it; it forwards it verbatim. That is both the freedom and the responsibility: if you write `gpt-4o-mini` and the provider only has `gpt-4o`, you get the provider's 400, not a friendly hint.
-
-DeepSeek, for example (`https://api.deepseek.com`, OpenAI-compatible):
-
-| What you want | Model identifier |
-|---|---|
-| Flash / regular chat | `deepseek-chat` |
-| Pro / deep reasoning | `deepseek-reasoner` |
-
-**The reasoning variant is a different model name, not a switch.** This is the easiest thing to get wrong: the `thinking: off/on` toggle sends `chat_template_kwargs.enable_thinking`, an extension that **locally hosted** services (llama.cpp / vLLM / Qwen) understand and cloud APIs do not.
-
-So:
-
-- **Local models** (llama.cpp / Ollama / vLLM): the identifier is a model name or a GGUF path (`qwen3:8b`, `/models/qwen3-30b.gguf`), and the `thinking` toggle works;
-- **Cloud models**: the identifier is the provider's exact name, and the `thinking` toggle is **essentially inert** — whether you get reasoning depends on which model name you picked.
-
-Same for everyone else: OpenAI is `gpt-4o-mini` / `gpt-4o`; Anthropic through an OpenAI-compatible layer is `claude-3-5-haiku`; a vLLM server is whatever `--served-model-name` was set to.
-
-**Don't guess — ask the upstream.** The console's "test connection" reads the upstream's `/v1/models` and lists the **model names that actually exist**, one click to fill the field:
-
-```
-available models (click to fill): deepseek-chat, deepseek-reasoner
-```
-
-If your name is not in the list, the test result says so outright.
-
-**Fixed a trap that would have cost you a round trip.** Either slot can point at a cloud API, and `chat_template_kwargs` is a local-service parameter — strict clouds (OpenAI, Azure) reject it outright:
-
-```
-Unrecognized request argument supplied: chat_template_kwargs
-```
-
-Now, on that specific 400, the gateway **strips the parameter, resends once**, and remembers that this endpoint does not know it — so it never sends it again. Local services still receive it.
-
-### 4.4 Two numbers that look cryptic
-
-**What "trim to 0.65 of the budget" means.**
-
-Trimming does not mean "fit exactly in the window". It means **cut down to 65% of the window**, leaving 35% headroom. The chain is:
-
-```
-usable window × usable_ratio(0.85) − output reserve − safety margin × learned shrink factor  =  budget
-budget × target_ratio(0.65)                                                              =  trim target
-```
-
-Why not trim to exactly fitting? Because the next turn grows — the model's answer and the tool results go back into the window. Trim to 100% and the next turn overflows immediately, so you trim again; and every trim invalidates llama.cpp's **prefix cache**, forcing the whole history to be pre-filled again (measured at ~1300 tok/s). Leaving 35% headroom means several turns fit before the next trim.
-
-Tuning it:
-
-| Value | Effect |
-|---|---|
-| Higher (0.75–0.85) | Shallower, more frequent trims; less recompute each time, but the cache is invalidated more often |
-| Lower (around 0.5) | One deep cut; the gap between trims stretches, but each recompute is bigger |
-
-It pairs with `min_clear_tokens` (8000 by default): a trim must free at least that many tokens to be worth doing, otherwise the history stays — **no trim means the cache survives**. Hence the policy is "trim rarely, but trim properly".
-
-**How long do we wait by default.**
-
-| Where | Default | Why |
-|---|---|---|
-| Base model `base.timeout_s` | **600 s** | A local 30B is slow to first token on long context |
-| Advanced model `advanced.timeout_s` | **120 s** | The usual ceiling for a cloud API |
-| Connect timeout | **15 s** | Same for both; the handshake should fail fast rather than hang |
-| Spine generation | 30 s | Internal call, does not affect the main request |
-
-What a timeout means depends on how far the request got:
-
-- **Never connected** (service not running, wrong address) → fails immediately and **the quota is refunded**, because nothing reached the upstream;
-- **Connected but no result** (the model was too slow) → waits out the timeout and **the quota is not refunded**, because the upstream may already be generating and billing.
-
-So an accidental timeout never burns quota for free — at worst you wait after having already paid. To calibrate, watch the `X-Steward-Cloud-Ms` response header: it is how long the advanced model actually took that turn. Both timeouts are editable in the console.
-
-> Fixed a misleading problem along the way: with `HTTP_PROXY` set, even loopback addresses were sent to the proxy, so "the model is not running" showed up as "timeout". Local and private addresses now connect directly; public ones still use the proxy.
-
-
-### 4.3 The console
-
-The same port also serves a UI: open `http://127.0.0.1:27418/`. The API lives under `/v1/*`, the console at `/`; they do not interfere.
-
-What it edits:
+Same port: `/` is the console, `/v1/*` is the API. They do not interfere.
 
 | Panel | What you can change |
 |---|---|
-| Base / advanced slot | URL, model name, upstream key, protocol, thinking — each slot has a **test connection** button, so you confirm it answers *before* saving |
-| Quota | Per-request cap, daily total, minimum interval |
-| Context | Window cap, trim target, spine toggle |
-| Archive / refs | Retention days, size cap, outbound toggle and allowlist |
-| Listener | Host and port |
-| Project keys | Issue, list, revoke (plaintext shown once) |
+| Base / advanced slot | URL, model name, upstream key, protocol, thinking — each with "test connection" |
+| Quota | per-request cap, daily total, minimum interval |
+| Context | window ceiling, trim water level, spine toggle |
+| Archive / refs | retention days, size cap, outbound toggle and allowlist |
+| Listener / project keys | host and port; issue and revoke keys |
 
-Getting in needs a passphrase, printed in the startup banner and stored in `state/console.token`:
+The token is printed at startup and stored in `state/console.token`. Saving rewrites values line by line (**comments survive**), puts secrets in `.env` (the YAML keeps `${BASE_API_KEY}`), and runs `validate()` before writing. Changes take effect after a restart; the console offers "save and restart".
 
-```
-  console http://127.0.0.1:27418/  (slots, quota, keys)
-  pass    CP5jJsFQ45yUZRBKuGW_tOPj
-```
+### 4.2 Two slots — one is enough
 
-It stays the same across restarts, so a browser session survives one. Delete the file if you want a new one.
+| Configuration | Result |
+|---|---|
+| Both filled | Full capability: day-to-day on `base`, hard problems on `advanced` after the model asks |
+| Only `base` | **Valid.** Local-only mode; `consult_cloud` is not injected, saving ~500 tokens per turn |
+| Only `advanced` | Will not start — with no base model there is nothing to serve |
 
-**Why not "open and edit".** This page rewrites configuration and reveals whether a key is set. Sitting on loopback does not protect it from two things: another web page POSTing cross-site (any tab can reach `127.0.0.1:27418`), and other scripts on the same machine. Hence:
+An empty slot is deliberately legal: "I only have one local model" is the common case.
 
-- **The passphrase travels in a custom `X-Console-Token` header.** A custom header triggers a CORS preflight cross-origin, and we send no CORS headers, so the browser blocks it outright — a harder guarantee than cookies. The cookie is only a convenience in ordinary browsers (no retyping after a reload); environments without cookie storage are unaffected;
-- Write endpoints check `Origin`: same-origin, a loopback origin, and a sandboxed iframe's `null` are allowed, everything else is a 403. The case that matters, `https://evil.example`, can never look like any of those;
-- Eight wrong passphrases lock it for a minute;
-- The API only ever reports *whether* a slot has a key, never the key.
+### 4.3 Model identifiers
 
-**What happens on save** (all three on the server; the page is just a form):
+**A model identifier is the exact string the upstream recognises.** The gateway forwards it verbatim; a typo earns you the upstream's 400.
 
-1. **Values are replaced line by line, comments preserved.** Rewriting the whole file would turn `config.yaml` from documentation into machine output.
-2. **Keys go to `.env`, not YAML.** The config keeps `${BASE_API_KEY}` — copying a config around should not carry two upstream keys with it. An empty field means "leave it alone"; otherwise every save would wipe the existing key.
-3. **Validate before writing.** The candidate goes through the same `validate()` the startup path uses; if it fails, the old file stays untouched and the reason is shown. A config that saves but cannot start is worse than one that refuses to save.
+| You want | Fill in |
+|---|---|
+| DeepSeek Flash / regular chat | `deepseek-chat` |
+| DeepSeek Pro / deep reasoning | `deepseek-reasoner` |
 
-**After saving, press "restart now" and it takes effect.**
+**The reasoning variant is a different model name, not a switch.** `thinking: on/off` sends `chat_template_kwargs.enable_thinking`, which only local servers (llama.cpp / vLLM / Qwen) understand; cloud APIs do not. Whether you get reasoning depends on which model name you pick.
 
-The confirmation strip that appears after a successful save carries a button:
+When unsure, ask the upstream: the console's "test connection" lists the real names from `/v1/models`.
 
-```
-written to config.yaml, 3 items.
-changes need a restart to take effect.  [restart now]
-```
-
-This is a **same-process restart**, not a spawned child: uvicorn releases the port as it exits, the next round binds it directly, and nothing has to fight over the socket. Your logs stay in the terminal you started it from. Environment variables that the config overrides are cleared before the reload, so a changed key in `.env` takes effect too.
-
-Restarting by hand works just as well:
-
-```bash
-# Ctrl+C, then
-python -m steward serve
-```
-
-
----
-
-## 5. Layout
-
-```
-.
-├── steward/                   the gateway (14 modules)
-│   ├── config.py              config parsing + validate
-│   ├── keys.py                project keys (hash only)
-│   ├── prompts.py             tool description · quality gate · spine/digest templates
-│   ├── guard.py               four gates + dedupe + quota persistence
-│   ├── upstream.py            base-model client (404 self-heal, window probe)
-│   ├── cloud.py               advanced-model client (deliverable externalization)
-│   ├── responses.py           Responses ↔ Chat conversion
-│   ├── context.py             window probe / exact counting / tiered trimming
-│   ├── spine.py               task spine
-│   ├── artifacts.py           archive · batching · reclamation
-│   ├── refs.py                local file allowlist and audit trail
-│   ├── webconsole.py          web console: routes, config writing, session
-│   ├── web/console.html       console page (single file, no external deps)
-│   ├── server.py              FastAPI routes, auth, tool loop
-│   ├── __main__.py            start / serve / init / test / key / ctx / refs / artifacts
-│   ├── envfile.py             .env reading and writing (init + console)
-│   ├── netpolicy.py           net policy: direct for local, proxy for public
-│   ├── config.example.yaml    config template (config.yaml is generated from it)
-│   └── README.md              implementation notes and troubleshooting (Chinese)
-├── docs/                      three diagrams + the deployment guide
-│   ├── DEPLOYMENT.md          deployment and startup: local, LAN, at boot, upgrade (Chinese)
-│   └── releases/              release notes per version
-├── scripts/                   launcher, integration tests, live checks, diagrams, publishing
-│   ├── start.sh / start.bat   the formal launch entry (check env, prepare config, start)
-│   └── publish.py             push to GitHub: git first, Git Data API as fallback
-├── tests/                     468 cases
-│   └── fixtures/              363-message history sample used by the audit
-├── legacy/                    archives of two earlier generations, not recommended
-├── pyproject.toml             packaging metadata: installs the steward command
-├── ARCHITECTURE.md            decisions and the alternatives that lost (Chinese)
-├── CONTEXT-DESIGN.md          the context-governance argument (Chinese)
-├── HANDOFF-PROTOCOL.md        original definition of the brief and the four-part reply (Chinese)
-│
-├── state/                     runtime state (not in the repo)
-└── .steward/artifacts/        deliverables and tool output (not in the repo, reclaimable via CLI)
-```
-
----
-
-## 6. Commands
+### 4.4 Common commands
 
 | Command | Purpose |
 |---|---|
-| `python -m steward start` | **the formal launch entry**: check env, prepare config, start (recommended for new users) |
-| `python -m steward serve` | start the gateway |
-| `python -m steward init` | configure both slots and issue the first key |
-| `python -m steward test` | connectivity of both endpoints |
-| `python -m steward ctx` | real window / budget / counting method |
-| `python -m steward key new --label <name>` | issue a key |
-| `python -m steward key list` / `revoke` | list / revoke |
-| `python -m steward refs <path…>` | would this path pass the refs policy? |
-| `python -m steward artifacts` | archive usage; `--clean` reclaims |
-| `python -m steward --version` | version |
-| `python scripts/publish.py --doctor` | diagnose publishing (certificates / connectivity / token / dry run) |
-| `python scripts/publish.py -m "msg"` | commit and push, environment-agnostic |
-| `python scripts/publish.py --release vX.Y.Z --notes-file …` | tag and publish a release |
+| `steward start` | check environment → prepare config → serve |
+| `steward serve` | serve directly (`--port` overrides temporarily) |
+| `steward init` | interactive setup of both slots plus a first key |
+| `steward test` | connectivity of both slots |
+| `steward ctx` | real window / input budget / counting method |
+| `steward key new` / `list` / `revoke` | issue / list / revoke project keys |
+| `steward artifacts` | archive usage, `--clean` to reclaim |
 
-### 6.1 Why publishing needs a script
-
-`git push` often fails behind a proxy, and the error points you the wrong way:
-
-| Error | Real cause |
-|---|---|
-| `CRYPT_E_NO_REVOCATION_CHECK` | the proxy is doing TLS interception and git cannot check revocation |
-| `unable to get local issuer certificate` | same thing, as reported by the openssl backend |
-| `CONNECT tunnel failed 502` | the proxy allows api.github.com but not github.com:443 |
-| `Authentication failed` | `Authorization: bearer` is API-only; git needs `x-access-token:` in the URL |
-
-`scripts/publish.py` wraps all of it: it finds a CA bundle that **actually connects** at runtime (no hardcoded path, no edits to `.git/config`), and falls back to the Git Data API when git cannot get through — same result, and the tree hash lets you verify it.
-
-```bash
-STEWARD_GH_TOKEN=xxx python scripts/publish.py --doctor   # inspect the environment
-STEWARD_GH_TOKEN=xxx python scripts/publish.py -m "msg"   # commit and push
-```
-
-The token is read from an environment variable or `--token`, never written to disk.
+Without the global command, replace `steward` with `python -m steward`.
 
 ---
 
-## 7. Configuration cheat sheet
+## 5. Configuration
 
-Fully commented version in `steward/config.yaml`.
+Every option is documented in [`steward/config.example.yaml`](steward/config.example.yaml) — the file `config.yaml` is generated from on first run.
 
 ```yaml
-base:          # local, the daily driver. Any OpenAI-compatible endpoint
+base:                       # daily driver, any OpenAI-compatible endpoint
   base_url: http://127.0.0.1:8080/v1
-  model: /models/your-model.gguf
-  thinking: "off"           # turn off for reasoning models, or tool calls stall
+  model: qwen3-30b
+  thinking: "off"           # turn off for local reasoning models, or tool calls stall
+  timeout_s: 600            # local long-context first token is slow
 
-advanced:      # cloud, used only for consult_cloud
-  base_url: https://your-provider.example.com/v1
-  model: your-advanced-model
-  max_tokens: 4096
+advanced:                   # the specialist, used only for consult_cloud; may be empty
+  base_url: https://api.deepseek.com/v1
+  model: deepseek-chat
+  timeout_s: 120            # typical cloud ceiling
 
 guard:
-  max_calls_per_turn: 2     # per request
-  daily_limit: 5            # per day (the last line of defence)
+  max_calls_per_turn: 2     # cloud calls allowed per request
+  daily_limit: 5            # daily total, the last line of defence
   min_interval_s: 30
-  dedupe: true
 
 context:
-  ctx_limit: 0              # 0 = probe automatically
-  target_ratio: 0.65        # how far below the budget one trim goes
-  min_clear_tokens: 8000    # clear at least this much, or the KV-cache hit is not worth breaking
-  spine: true               # generate the six-line spine after trimming
+  ctx_limit: 0              # 0 = auto-probe; any integer also works
+  target_ratio: 0.65        # trim to 65% of budget, leaving room to avoid re-trimming
+  spine: true               # produce a six-line spine when trimming is deep
 
 artifacts:
-  dir: .steward/artifacts
   max_age_days: 30
   max_total_mb: 512
 
-refs:          # let the cloud read local files. Off by default — the only outbound channel
+refs:                       # lets the cloud read local files; the only outbound channel
   enabled: false
-  roots: []                # enabled with no allowlist refuses to start
+  roots: []                 # enabled with an empty allowlist refuses to start
 ```
 
-**refs is the only channel that sends local content out.** Off by default, root allowlist, 25 deny patterns, 64 KB per file / 120K characters per call, one audit line per expansion. It is off by default on purpose: using it correctly requires that you have checked `roots`.
+**`refs` is off by default on purpose.** It is the only channel that sends local content out: root allowlist, 64 KB per file, 120k chars per call, one audit line per expansion. Confirm `roots` before enabling it.
 
 ---
 
-## 8. Tests
-
-```bash
-python -m pytest tests -q                    # 468
-python -m pytest tests/test_audit.py -s -q   # just the comparison tables
-python scripts/ctx_live.py --fit 130000 --spine   # one real trim + spine against a live model
-```
-
-Three groups worth explaining:
-
-**`test_audit.py` (23) is not "run the unit tests again".** It carries the pre-fix implementation into the test suite as a control group and runs the same data through both. Three comparisons plus three meta-checks (feed the old implementation to the judge; it must be graded as failing) ensure the audit is not "written but unable to detect".
-
-**`test_reliability.py` (20)** targets failure paths: ten concurrent requests racing for three slots and exactly three succeeding, malformed tokens, upstream exceptions, a `usage` field that is a list, a client that already has a same-named tool. All three fixes were verified by regression injection — revert the fix and the test must go red.
-
-**`test_prompts.py`** turns injection cost into hard assertions: fixed injection ≤560 tokens per turn, tool description ≤240, plus no-duplication rules such as "the five-line format is stated once" and "system does not restate the tool".
-
-Measured on real hardware (27B / `n_ctx=131072` / single slot / prefill 1305 tok/s):
-
-```
-363 messages / 159,239 tokens
-  → trimmed to 68,926, one prefill, HTTP 200, 62.1s
-  → upstream counted 61,126 (budget 106,803)
-```
-
----
-
-## 9. Documentation index
-
-**Current**
+## 6. Documentation
 
 | Document | Contents |
 |---|---|
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | **Deployment and startup**: local launch, LAN sharing, running at boot, upgrades, troubleshooting (Chinese) |
-| `steward/README.md` | implementation detail: how each module works, what each parameter means, troubleshooting (Chinese) |
-| `ARCHITECTURE.md` | why it is built this way: decisions and rejected alternatives (Chinese) |
-| `CONTEXT-DESIGN.md` | full analysis of the window problem and the L0–L5 design, with P0–P3 delivery notes (Chinese) |
-| `HANDOFF-PROTOCOL.md` | original definition of the BRIEF and the four-part reply; `prompts.py` is its simplified form (Chinese) |
-| `README.md` | this document, in Chinese |
-
-**`legacy/`: archives of two earlier generations**
-
-The project had two predecessors, neither of which is this thing:
-
-1. **Generation one wrapped a third-party MCP server** (`cli-bridge-mcp`) exposing `ask_mycloud` / `ask_cascade`, with quota controlled by a `DAILY_LIMIT` environment variable. The problem: the guardrail could only count calls, not judge whether the work deserved the cloud, and the tool definition occupied context permanently. See `legacy/MCP-SETUP.md`, `legacy/EXTERNAL-AI-RULES.md`.
-2. **Generation two was a self-built gateway** called `cloudbridge`. The name only said "connected to the cloud", while the work was budgeting, windowing and archiving — three steward duties. It outgrew "bridge", so it was renamed `steward`.
-
-The L0/L1/L2 escalation criteria in `legacy/ESCALATION-RULES.md` still have reference value (absorbed into the trigger conditions in `prompts.py`); `legacy/VENDOR-SURVEY.md` is a vendor survey whose conclusions are stale, though its analysis of "gateway decides vs model decides" still holds.
-
-Those files are kept to explain **why things are the way they are**, not as recommended usage.
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Deployment and startup: LAN, autostart, upgrades, troubleshooting |
+| [`steward/README.md`](steward/README.md) | Implementation details, every parameter, troubleshooting table (Chinese) |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Architectural decisions and the alternatives that lost (Chinese) |
+| [`CONTEXT-DESIGN.md`](CONTEXT-DESIGN.md) | The full context-governance argument and measurements (Chinese) |
+| [`HANDOFF-PROTOCOL.md`](HANDOFF-PROTOCOL.md) | Brief and deliverable format definitions (Chinese) |
+| [Releases](https://github.com/liuda1999/steward/releases) | What changed in each version |
 
 ---
 
-## 10. Known trade-offs
+## 7. License
 
-**Internal non-streaming.** Time to first token equals total turn time. In exchange you never get "half an answer, a tool call appears, start over".
+This project is licensed under the **Apache License 2.0**. Full text in [LICENSE](LICENSE); copyright and third-party notes in [NOTICE](NOTICE).
 
-**The loop is single-request only.** The gateway is stateless and keeps no cross-request context; the client owns the history. So window governance is computed per request — if the client blows up the history itself, the gateway can only trim what it receives.
-
-**The spine is a summary, not a backup.** Dropped error text and code fragments do not come back, though they are mostly on disk. The real risk is the model **inventing** the missing part, so the spine always ends with "re-confirm details with tools instead of guessing".
-
-**Trimming costs a prefix recompute.** Rewriting the middle of the history invalidates the llama.cpp prefix cache. Hence "trim rarely but deeply", with `min_clear_tokens` making each trim worth its cost. If your prefill is far faster than 1305 tok/s, raise `target_ratio` toward 0.8 and trim more finely and more often.
-
-**Console changes need a restart.** The gateway does not supervise itself, but it can **restart in the same process**: press "restart now" and uvicorn exits, the config is reloaded, and it starts again — the port is free in between, and the logs stay where they were. Restarting by hand (`Ctrl+C`, then `python -m steward serve`) works too.
-
-**Silent truncation is only detectable after the fact.** Upstream returns 200 and the content looks fine; only a `prompt_tokens` well below the estimate gives it away. Once detected the gateway permanently shrinks the budget, but that turn already lost information.
-
-**The archive is not encrypted.** It holds full deliverables and raw tool output, possibly including source fragments. Directory permissions follow the gateway process umask.
-
-**On Windows `chmod 0600` is a no-op** (`keys.json` uses the default ACL), but the file holds only hashes, so a copy of it yields no key. **`state/usage.json` assumes a single process**; two instances pointing at the same file will overwrite each other's counts.
-
----
-
-## 11. License
-
-**Apache License 2.0.** Full text in [LICENSE](LICENSE); copyright and third-party notes in [NOTICE](NOTICE).
-
-It was chosen over MIT for one practical difference: **the patent grant**. This project talks to model services and inference frameworks, and its users may sit inside companies with patent portfolios. MIT is silent on patents — silence is not safety, it is asking every user's legal team to guess. Apache-2.0 says it plainly: contributors grant you a license to their necessary patents, and if you sue the project over patents, that license terminates.
-
-What you may do:
+**You may:**
 
 | | |
 |---|---|
-| Commercial use | Yes — no fee, no notification required |
-| Modify | Yes — you do not have to open-source your changes |
-| Closed-source distribution | Yes — embed it in internal systems or commercial products |
+| Commercial use | Yes — free, no notification required |
+| Modify | Yes — you do not have to publish your changes |
+| Distribute | Yes — including closed-source distribution and embedding in commercial products |
 | Private deployment | Yes — unlimited machines |
+| Patents | Contributors grant you a licence to the patents necessarily practised by this project |
 
-Three obligations: keep [LICENSE](LICENSE) and [NOTICE](NOTICE), state that modified files were changed, and do not use the project name to endorse your derivative (trademark is not covered by the grant).
+**You must:**
 
-Every source file begins with `SPDX-License-Identifier: Apache-2.0` so tooling can detect it automatically.
+- Keep [LICENSE](LICENSE) and [NOTICE](NOTICE)
+- State that modified files were changed
+- Not use the project name or the author's name to endorse your derivative — trademark is not covered by the grant
+
+**You should know:**
+
+- The software is provided "as is", without warranties or conditions of any kind, and the author is not liable for the consequences of its use.
+- The patent grant is reciprocal: if you sue over this project's patents, the grant terminates.
+
+Source files start with `SPDX-License-Identifier: Apache-2.0` so tooling can detect the licence automatically.
