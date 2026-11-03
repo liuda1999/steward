@@ -4,8 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-381%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.2.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-387%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.2.1-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > 本地模型是主力，云端是外援。steward 管这中间的一切：什么时候值得花钱、窗口装不装得下、档案怎么不把磁盘写满。
 > **打开 `http://127.0.0.1:27418/` 就是控制台** —— 填两个槽位的 API、调配额、签发项目 key，都不用碰命令行。
@@ -17,14 +17,14 @@
 
 | | |
 |---|---|
-| 版本 | **v1.2.0**（[发布说明](docs/releases/v1.2.0.md)） |
+| 版本 | **v1.2.1**（[发布说明](docs/releases/v1.2.1.md)） |
 | 许可证 | **Apache-2.0**（[LICENSE](LICENSE) · [NOTICE](NOTICE)）—— 可商用、可修改、可闭源分发，附专利授权 |
 | 形态 | 单进程 FastAPI 网关，无状态；同一端口带 Web 控制台 |
 | 默认端口 | 27418 |
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
 | 规模 | 5,824 行 Python（含注释），14 个模块 |
-| 测试 | 381 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 27 · 其余为各层单测与端到端 |
+| 测试 | 387 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 33 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -296,7 +296,8 @@ python -m steward serve --check -c config.yaml
 
 **为什么不是「打开就能改」。** 这个页面能改配置、能看到密钥设置没设置，摆在本机也挡不住两件事：别的网页跨站 POST（随便哪个标签页都能打 `127.0.0.1:27418`），以及同机的其他脚本。所以：
 
-- 会话 cookie 用 `HttpOnly` + `SameSite=Strict`，写操作还要校验 `Origin` 必须同源 —— 前者挡跨站携带，后者挡跨站构造；
+- **口令用自定义请求头 `X-Console-Token` 携带。** 自定义头跨域会先触发 CORS 预检，而我们不发 CORS 头，浏览器直接拦掉 —— 这比 cookie 更硬。cookie 只在普通浏览器里当便利（刷新页面不用重输口令），沙箱环境存不了 cookie 也不影响使用；
+- 写操作校验 `Origin`：放行同源、本机来源、以及沙箱 iframe 的 `null`，其余一律 403。真正要挡的 `https://evil.example` 改不成上面任何一种；
 - 口令连错 8 次锁一分钟，防无限猜测；
 - 接口只回报「这个槽位有没有 key」，不回吐 key 本身。
 
@@ -343,7 +344,7 @@ python -m steward serve
 ├── docs/                        三张图，由 scripts/gen_diagrams.py 生成
 ├── scripts/                     联调、真机验证、图生成、推送
 │   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
-├── tests/                       381 个用例
+├── tests/                       387 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
 ├── ARCHITECTURE.md              架构决策与被否掉的方案
@@ -439,7 +440,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 381 个
+python -m pytest tests -q                    # 387 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```

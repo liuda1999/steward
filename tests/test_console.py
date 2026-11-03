@@ -111,19 +111,34 @@ class Client:
         asyncio.run(self._ctx.__aexit__(*exc))
 
 
-def call(app, method: str, path: str, body: dict | None = None, token: str = "", headers: dict | None = None):
-    """一次性请求，返回 (status, json)。token 给了就顺便登录。"""
+def call(
+    app,
+    method: str,
+    path: str,
+    body: dict | None = None,
+    token: str = "",
+    headers: dict | None = None,
+    use_header: bool = False,
+):
+    """一次性请求，返回 (status, json)。
+
+    token 给了就顺便登录。use_header=True 时改用请求头带口令 ——
+    浏览器的主路径，cookie 只是普通浏览器里的便利。
+    """
 
     async def go():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:27418"
         ) as client:
-            if token:
+            extra = dict(headers or {})
+            if token and use_header:
+                extra["X-Console-Token"] = token
+            if token and not use_header:
                 await client.post("/console/api/login", json={"token": token})
             method_fn = getattr(client, method)
             if body is None:
-                return await method_fn(path, headers=headers or {})
-            return await method_fn(path, json=body, headers=headers or {})
+                return await method_fn(path, headers=extra)
+            return await method_fn(path, json=body, headers=extra)
 
     resp = asyncio.run(go())
     try:
@@ -444,3 +459,74 @@ def test_state_reads_from_disk_not_memory(tmp_path):
     assert status == 200
     assert body["data"]["slots"]["advanced"]["base_url"] == "https://api.example.com/v1"
     assert body["data"]["slots"]["advanced"]["configured"] is True
+
+
+# ---------------------------------------------------------------- 认证方式
+#
+# 这些用例的由来：预览面板用的是沙箱 iframe，Origin 是 null，且存不了 cookie。
+# 原实现只认 cookie + 严格同源，结果在那种环境里登录能成功、之后每个请求 401。
+# 所以认证改成「请求头带口令」，来源判定放宽到同源 / 本机 / 不透明来源。
+
+
+def test_login_works_from_sandboxed_iframe(tmp_path):
+    """沙箱 iframe 的 Origin 是 null，不能把它当跨站拒绝。"""
+    app, _, console = make_app(tmp_path)
+    status, body = call(app, "post", "/console/api/login", {"token": console.token}, headers={"origin": "null"})
+    assert status == 200, body
+
+
+def test_login_works_through_local_proxy(tmp_path):
+    """经本地代理访问时 Origin 的主机名和 Host 头对不上，也得放行。"""
+    app, _, console = make_app(tmp_path)
+    status, body = call(
+        app,
+        "post",
+        "/console/api/login",
+        {"token": console.token},
+        headers={"origin": "http://localhost:27418", "host": "127.0.0.1:27418"},
+    )
+    assert status == 200, body
+
+
+def test_header_token_authenticates_without_cookie(tmp_path):
+    """请求头带口令就能访问，不依赖 cookie —— 沙箱里没有 cookie。"""
+    app, _, console = make_app(tmp_path)
+    status, body = call(app, "get", "/console/api/state", token=console.token, use_header=True)
+    assert status == 200
+    assert body["ok"]
+
+
+def test_header_token_can_write(tmp_path):
+    app, cfg_path, console = make_app(tmp_path)
+    status, body = call(
+        app,
+        "post",
+        "/console/api/save",
+        {"values": {"guard": {"daily_limit": 6}}},
+        token=console.token,
+        use_header=True,
+    )
+    assert status == 200, body
+    assert "daily_limit: 6" in cfg_path.read_text(encoding="utf-8")
+
+
+def test_wrong_header_token_is_rejected(tmp_path):
+    app, _, _ = make_app(tmp_path)
+    status, body = call(app, "get", "/console/api/state", token="wrong-token", use_header=True)
+    assert status == 401
+
+
+def test_foreign_origin_is_rejected_even_with_valid_token(tmp_path):
+    """外站即使知道口令也发不动：Origin 对不上，且自定义头跨域要过预检。"""
+    app, _, console = make_app(tmp_path)
+    status, body = call(
+        app,
+        "post",
+        "/console/api/save",
+        {"values": {"guard": {"daily_limit": 999}}},
+        token=console.token,
+        use_header=True,
+        headers={"origin": "https://evil.example"},
+    )
+    assert status == 403
+    assert "来源" in body["error"]

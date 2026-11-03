@@ -47,6 +47,9 @@ from .upstream import probe
 logger = logging.getLogger(__name__)
 
 COOKIE = "steward_console"
+#: 页面把口令放在这个头里发。自定义头跨域会被浏览器先做 CORS 预检，
+#: 而我们不发 CORS 头，所以别的站点就算知道地址也发不动 —— 这是主要的防跨站手段。
+TOKEN_HEADER = "X-Console-Token"
 TOKEN_NAME = "console.token"
 PAGE = Path(__file__).resolve().parent / "web" / "console.html"
 
@@ -109,7 +112,18 @@ class Session:
     def cookie_value(self) -> str:
         return hmac.new(self.token.encode(), b"steward-console-v1", "sha256").hexdigest()
 
-    def verify_cookie(self, request: Request) -> bool:
+    def authorized(self, request: Request) -> bool:
+        """这个请求算不算已登录。
+
+        两条路：
+        - **请求头带口令**（页面里的主路径）。沙箱 iframe 存不了 cookie，
+          SameSite=Strict 的 cookie 也不会跨站发送，所以只靠 cookie 的话，
+          在预览面板这类环境里根本进不去。
+        - **cookie**（普通浏览器的便利）。cookie 里存的是口令的 HMAC。
+        """
+        header = (request.headers.get(TOKEN_HEADER) or "").strip()
+        if header and hmac.compare_digest(header, self.token):
+            return True
         got = request.cookies.get(COOKIE, "")
         return bool(got) and hmac.compare_digest(got, self.cookie_value())
 
@@ -130,17 +144,32 @@ class Session:
         return False
 
 
-def same_origin(request: Request) -> bool:
-    """挡 CSRF。
+def origin_allowed(request: Request, cfg: AppCfg) -> bool:
+    """挡跨站请求，但别把正当用法挡在外面。
 
-    浏览器的跨站表单 POST 会带 Origin，且和我们自己的 Host 不一致；
-    curl 这类不带的放行（它本来也不带 cookie）。
+    之前只认「Origin 的 netloc 等于 Host 头」，结果把两类正当访问误杀了：
+
+    - **沙箱 iframe**（浏览器的预览面板、嵌入式工具）：Origin 是 `null`，
+      因为页面处在不透明来源里；
+    - **经本地代理访问**（预览面板常这么干）：Origin 的主机名和 Host 头对不上。
+
+    现在放行三类：同源、`null`（不透明来源）、以及本机来源（回环地址 + 我们的端口）。
+    真正要挡的是 `https://evil.example` 这种 —— 它的 Origin 永远改不成上面三类，
+    而且自定义请求头跨域要先过 CORS 预检，我们不发 CORS 头，浏览器直接拦掉。
     """
-    origin = request.headers.get("origin")
+    origin = (request.headers.get("origin") or "").strip()
     if not origin:
-        return True
-    host = request.headers.get("host", "")
-    return origin.split("://", 1)[-1] == host
+        return True  # 非浏览器（curl、脚本），它们本来也拿不到浏览器的凭据
+    if origin == "null":
+        return True  # 沙箱 iframe：不透明来源
+    netloc = origin.split("://", 1)[-1]
+    if netloc == request.headers.get("host", ""):
+        return True  # 同源
+    host, _, port = netloc.rpartition(":")
+    host = host.strip("[]")
+    if port.isdigit() and int(port) == int(cfg.server.port) and is_loopback(host):
+        return True  # 本机来源（经代理访问本机端口）
+    return False
 
 
 # ---------------------------------------------------------------- 读写配置
@@ -371,9 +400,9 @@ def install(app, cfg: AppCfg, cfg_path: Path, keys: KeyStore, page: Path | None 
     router = APIRouter()
 
     def guard(request: Request) -> None:
-        if not same_origin(request):
-            raise ConsoleError("来源校验失败：只接受本页面发起的请求")
-        if not session.verify_cookie(request):
+        if not origin_allowed(request, cfg):
+            raise ConsoleError("来源校验失败：只接受本机或同源发起的请求")
+        if not session.authorized(request):
             raise ConsoleError("未登录")
 
     def fail(exc: ConsoleError, status: int = 400) -> JSONResponse:
@@ -389,7 +418,7 @@ def install(app, cfg: AppCfg, cfg_path: Path, keys: KeyStore, page: Path | None 
 
     @router.post("/login")
     async def login(request: Request) -> JSONResponse:
-        if not same_origin(request):
+        if not origin_allowed(request, cfg):
             return fail(ConsoleError("来源校验失败"), 403)
         body = await request.json()
         try:
@@ -417,7 +446,7 @@ def install(app, cfg: AppCfg, cfg_path: Path, keys: KeyStore, page: Path | None 
 
     @router.get("/state")
     async def state(request: Request) -> JSONResponse:
-        if not session.verify_cookie(request):
+        if not session.authorized(request):
             return JSONResponse({"ok": False, "error": "未登录"}, status_code=401)
         return JSONResponse(
             {"ok": True, "data": public_state(display_cfg(cfg, cfg_path), cfg_path, cfg_path.parent / ".env", keys)}
@@ -481,7 +510,7 @@ def install(app, cfg: AppCfg, cfg_path: Path, keys: KeyStore, page: Path | None 
 
     @router.get("/keys")
     async def list_keys(request: Request) -> JSONResponse:
-        if not session.verify_cookie(request):
+        if not session.authorized(request):
             return JSONResponse({"ok": False, "error": "未登录"}, status_code=401)
         return JSONResponse({"ok": True, "data": [k.public() for k in keys.all()]})
 

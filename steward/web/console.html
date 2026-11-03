@@ -242,8 +242,17 @@
 const $ = (s) => document.querySelector(s);
 const FIELDS = [...document.querySelectorAll("[data-f]")];
 
+// 口令放在内存里，每个请求用自定义头带上。
+// 为什么不用 cookie：沙箱 iframe（预览面板、嵌入式工具）存不了 cookie，
+// SameSite=Strict 的 cookie 也不会跨站发送 —— 只靠 cookie 的话，在那些
+// 环境里登录能成功、之后每个请求都 401。
+// 自定义头跨域会先触发 CORS 预检，我们不发 CORS 头，浏览器直接拦掉，
+// 所以这反而是更硬的防跨站手段。
+let TOKEN = "";
+
 const api = async (path, body) => {
   const opt = { credentials: "same-origin", headers: {} };
+  if (TOKEN) opt.headers["X-Console-Token"] = TOKEN;
   if (body !== undefined) {
     opt.method = "POST";
     opt.headers["Content-Type"] = "application/json";
@@ -371,8 +380,11 @@ const refresh = async () => {
 
 $("#loginBtn").onclick = async () => {
   $("#loginOut").textContent = "";
+  const typed = $("#tok").value.trim();
   try {
-    await api("login", { token: $("#tok").value.trim() });
+    await api("login", { token: typed });
+    TOKEN = typed;                       // 之后每个请求都带上
+    try { sessionStorage.setItem("steward-token", typed); } catch (e) { /* 沙箱里可能不让存，无所谓 */ }
     $("#tok").value = "";
     refresh();
   } catch (e) {
@@ -452,6 +464,9 @@ $("#newKey").onclick = async () => {
   }
 };
 
+// 页面刷新后如果还记得口令（普通浏览器的 sessionStorage），直接进；
+// 沙箱里存不了就退回登录框，不影响使用。
+try { TOKEN = sessionStorage.getItem("steward-token") || ""; } catch (e) { TOKEN = ""; }
 refresh();
 </script>
 </body>

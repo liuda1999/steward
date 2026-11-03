@@ -132,7 +132,11 @@ POST /console/api/keys/revoke 吊销
 
 **写盘前跑一遍 `validate()`。** 候选文本先解析成 `AppCfg` 再校验，不通过就不落盘。用的是启动路径同一个函数（`config_from_dict`），不然会出现界面验证通过、启动时却不认。
 
-会话与口令：`state/console.token`，首次启动生成，跨重启不变；cookie 是 `hmac(token)`，`HttpOnly` + `SameSite=Strict`；写操作再校验 `Origin` 同源。只靠 cookie 不够 —— 跨站表单 POST 不会带 `Origin` 之外的任何门槛，而浏览器允许它发生。
+会话与口令：`state/console.token`，首次启动生成，跨重启不变。
+
+**认证用请求头，不用 cookie。** 页面把口令放在 `X-Console-Token` 里发（cookie 只在普通浏览器里当便利）。原因：沙箱 iframe 存不了 cookie，而 `SameSite=Strict` 的 cookie 也不跨站发送 —— 只靠 cookie 的话，在预览面板、嵌入式工具这类环境里登录能成功、之后每个请求 401。自定义头跨域要过 CORS 预检，我们不发 CORS 头，浏览器直接拦掉，所以这反而是更硬的防跨站手段。
+
+**`Origin` 判定要区分「跨站」和「不是同源」。** 只认「Origin 的 netloc 等于 Host 头」会误杀两类正当访问：沙箱 iframe 的 Origin 是 `null`（不透明来源），经本地代理访问时两者的主机名也对不上。现在放行同源、`null`、以及回环地址 + 我们的端口，其余一律 403。
 
 保存后要重启才生效。不做进程内重启的原因是端口：旧进程还握着 27418，新进程起来会和它抢同一个 socket。
 
