@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>steward 控制台</title>
+<style>
+  /* 配色沿用 docs/ 里三张图的语义色：绿=本地、红=云端、蓝=网关。 */
+  :root {
+    --bg: #f7f9fb;
+    --panel: #ffffff;
+    --ink: #1f2933;
+    --muted: #66727f;
+    --line: #e3e8ee;
+    --gate: #4a6fa5;
+    --local: #2f7d4f;
+    --cloud: #a63d40;
+    --warn: #8a6d1f;
+    --code: #eef2f7;
+    --shadow: 0 1px 2px rgba(31, 41, 51, .06), 0 8px 24px rgba(31, 41, 51, .05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161b;
+      --panel: #1a2027;
+      --ink: #e6ebf1;
+      --muted: #98a4b3;
+      --line: #2a323c;
+      --gate: #7ea2d8;
+      --local: #6fbf8e;
+      --cloud: #e08589;
+      --warn: #d8b455;
+      --code: #11161c;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 -apple-system, "Segoe UI", "Noto Sans SC", system-ui, sans-serif;
+  }
+  code, input, textarea, select { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  header {
+    position: sticky; top: 0; z-index: 10; background: var(--panel);
+    border-bottom: 1px solid var(--line); padding: 12px 20px;
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .3px; }
+  .ver { color: var(--muted); font-size: 13px; font-weight: 400; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .chip {
+    font-size: 12.5px; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); background: var(--bg);
+  }
+  .chip.on { color: var(--local); border-color: currentColor; }
+  .chip.off { color: var(--warn); border-color: currentColor; }
+  main { max-width: 1060px; margin: 0 auto; padding: 22px 20px 120px; }
+  section.card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--shadow);
+  }
+  .card h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 14px; font-weight: 600;
+  }
+  .slot-base { border-top: 3px solid var(--local); }
+  .slot-advanced { border-top: 3px solid var(--cloud); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .row { display: grid; grid-template-columns: 132px 1fr; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .row label { font-size: 13.5px; color: var(--muted); }
+  .row .hint { grid-column: 2; font-size: 12.5px; color: var(--muted); margin-top: -4px; }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--ink); font-size: 13.5px;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--gate); outline-offset: 1px; }
+  textarea { min-height: 66px; resize: vertical; }
+  .slot-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .slot-head strong { font-size: 15px; }
+  .slot-head .tag { font-size: 12px; color: var(--muted); }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+  button {
+    font: inherit; font-size: 13.5px; padding: 7px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer;
+  }
+  button:hover { border-color: var(--gate); }
+  button.primary { background: var(--gate); border-color: var(--gate); color: #fff; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.danger { color: var(--cloud); border-color: currentColor; }
+  button:disabled { opacity: .5; cursor: default; }
+  .out { font-size: 12.5px; color: var(--muted); min-height: 18px; }
+  .out.ok { color: var(--local); }
+  .out.bad { color: var(--cloud); }
+  .foot {
+    position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel);
+    border-top: 1px solid var(--line); padding: 12px 20px;
+    display: flex; gap: 14px; align-items: center; justify-content: center; flex-wrap: wrap;
+  }
+  .foot .msg { font-size: 13px; color: var(--muted); }
+  .foot .msg.bad { color: var(--cloud); }
+  .foot .msg.ok { color: var(--local); }
+  .keys { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .keys th, .keys td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+  .keys th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .keys td code { background: var(--code); padding: 1px 6px; border-radius: 5px; }
+  .newkey {
+    margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+    border: 1px dashed var(--gate); font-size: 13px; display: none; word-break: break-all;
+  }
+  .login { max-width: 420px; margin: 12vh auto; }
+  .login p { color: var(--muted); font-size: 13.5px; }
+  .hidden { display: none !important; }
+  .banner {
+    border-radius: 10px; padding: 12px 14px; font-size: 13.5px; margin-bottom: 18px;
+    border: 1px solid var(--line); background: var(--panel);
+  }
+  .banner.warn { border-color: var(--warn); color: var(--warn); }
+  .banner code { background: var(--code); padding: 1px 6px; border-radius: 5px; }
+  .sw { display: flex; align-items: center; gap: 8px; }
+  .sw input { width: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>steward <span class="ver" id="ver"></span></h1>
+  <div class="chips" id="chips"></div>
+</header>
+
+<main>
+  <!-- 登录 -->
+  <div id="login" class="login card hidden">
+    <h2>需要口令</h2>
+    <p>口令在网关启动时打印在终端里，也存在 <code>state/console.token</code>。它和控制台绑在同一个端口上，所以进门要报一次名字。</p>
+    <div class="row"><label for="tok">口令</label><input type="password" id="tok" autocomplete="current-password" autofocus></div>
+    <div class="actions"><button class="primary" id="loginBtn">进入</button><span class="out" id="loginOut"></span></div>
+  </div>
+
+  <!-- 主体 -->
+  <div id="app" class="hidden">
+    <div class="banner warn hidden" id="restartBar"></div>
+
+    <div class="grid2">
+      <section class="card slot-base">
+        <div class="slot-head"><strong>基础模型</strong><span class="tag">日常主力 · 大部分请求走这里</span></div>
+        <div class="row"><label>地址</label><input type="text" data-f="base.base_url" placeholder="http://127.0.0.1:11434/v1"></div>
+        <div class="row"><label>模型标识</label><input type="text" data-f="base.model" placeholder="qwen3:8b / /models/x.gguf"></div>
+        <div class="row"><label>上游 key</label><input type="password" data-f="base.api_key" placeholder="留空＝不改"></div>
+        <div class="row"><label>协议</label>
+          <select data-f="base.protocol"><option value="chat">chat</option><option value="responses">responses</option></select>
+        </div>
+        <div class="row"><label>thinking</label>
+          <select data-f="base.thinking"><option value="off">off（推理型模型建议）</option><option value="auto">auto</option><option value="on">on</option></select>
+        </div>
+        <div class="actions"><button data-test="base">测试连接</button><span class="out" id="out-base"></span></div>
+      </section>
+
+      <section class="card slot-advanced">
+        <div class="slot-head"><strong>进阶模型</strong><span class="tag">按次计费 · 只在模型申请时调用</span></div>
+        <div class="row"><label>地址</label><input type="text" data-f="advanced.base_url" placeholder="https://api.example.com/v1"></div>
+        <div class="row"><label>模型标识</label><input type="text" data-f="advanced.model" placeholder="your-model"></div>
+        <div class="row"><label>上游 key</label><input type="password" data-f="advanced.api_key" placeholder="留空＝不改"></div>
+        <div class="row"><label>协议</label>
+          <select data-f="advanced.protocol"><option value="chat">chat</option><option value="responses">responses</option></select>
+        </div>
+        <div class="row"><label>thinking</label>
+          <select data-f="advanced.thinking"><option value="auto">auto</option><option value="off">off</option><option value="on">on</option></select>
+        </div>
+        <div class="actions"><button data-test="advanced">测试连接</button><span class="out" id="out-advanced"></span></div>
+        <p class="hint" style="margin-top:6px">整段留空就是纯本地模式：不注入 <code>consult_cloud</code>，每轮省下约 500 tokens。</p>
+      </section>
+    </div>
+
+    <div class="grid2">
+      <section class="card">
+        <h2>配额</h2>
+        <div class="row"><label>单请求上限</label><input type="number" min="0" data-f="guard.max_calls_per_turn"></div>
+        <div class="row"><label>每日总量</label><input type="number" min="0" data-f="guard.daily_limit"></div>
+        <div class="row"><label>最小间隔（秒）</label><input type="number" min="0" data-f="guard.min_interval_s"></div>
+      </section>
+
+      <section class="card">
+        <h2>上下文</h2>
+        <div class="row"><label>窗口上限</label><input type="number" min="0" data-f="context.ctx_limit">
+          <span class="hint">0 = 启动时自动探测</span></div>
+        <div class="row"><label>裁到预算的</label><input type="number" step="0.05" min="0.3" max="1" data-f="context.target_ratio"></div>
+        <div class="row"><label>任务骨架</label>
+          <div class="sw"><input type="checkbox" id="spine"><label for="spine" style="color:inherit">裁剪后生成六行摘要</label></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>存档与文件外发</h2>
+      <div class="grid2">
+        <div>
+          <div class="row"><label>保留天数</label><input type="number" min="0" data-f="artifacts.max_age_days"></div>
+          <div class="row"><label>容量上限（MB）</label><input type="number" min="0" data-f="artifacts.max_total_mb"></div>
+        </div>
+        <div>
+          <div class="row"><label>refs</label>
+            <div class="sw"><input type="checkbox" id="refsOn"><label for="refsOn" style="color:inherit">允许云端读本地文件</label></div>
+            <span class="hint">唯一会主动把本地内容发出去的通道。开启必须配白名单。</span>
+          </div>
+          <div class="row"><label>白名单目录</label>
+            <textarea data-f="refs.roots" placeholder="每行一个绝对路径，例如&#10;C:\projects\demo&#10;/home/me/work"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>监听</h2>
+      <div class="grid2">
+        <div class="row"><label>地址</label><input type="text" data-f="server.host">
+          <span class="hint">127.0.0.1 只给本机；0.0.0.0 给局域网（此时鉴权强制 enabled）</span></div>
+        <div class="row"><label>端口</label><input type="number" data-f="server.port"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>项目 key</h2>
+      <p class="hint" style="margin-top:0">发给智能体的那把。明文只在签发时出现一次，库里只存 hash。</p>
+      <table class="keys"><thead><tr><th>ID</th><th>标签</th><th>创建</th><th>用量</th><th>状态</th><th></th></tr></thead><tbody id="keyRows"></tbody></table>
+      <div class="actions">
+        <input type="text" id="keyLabel" placeholder="标签，例如 laptop / ci" style="max-width:220px">
+        <button id="newKey">签发</button>
+      </div>
+      <div class="newkey" id="newKeyBox"></div>
+    </section>
+  </div>
+</main>
+
+<div class="foot hidden" id="foot">
+  <button class="primary" id="saveBtn">保存并校验</button>
+  <span class="msg" id="saveMsg"></span>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const FIELDS = [...document.querySelectorAll("[data-f]")];
+
+const api = async (path, body) => {
+  const opt = { credentials: "same-origin", headers: {} };
+  if (body !== undefined) {
+    opt.method = "POST";
+    opt.headers["Content-Type"] = "application/json";
+    opt.body = JSON.stringify(body);
+  }
+  const res = await fetch("console/api/" + path, opt);
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = { ok: false, error: "服务端返回了非 JSON" }; }
+  if (res.status === 401) { showLogin(); throw new Error(data.error || "未登录"); }
+  if (!data.ok) throw new Error(data.error || ("HTTP " + res.status));
+  return data.data;
+};
+
+const showLogin = () => {
+  $("#login").classList.remove("hidden");
+  $("#app").classList.add("hidden");
+  $("#foot").classList.add("hidden");
+  setTimeout(() => $("#tok").focus(), 30);
+};
+
+const showApp = () => {
+  $("#login").classList.add("hidden");
+  $("#app").classList.remove("hidden");
+  $("#foot").classList.remove("hidden");
+};
+
+const setField = (name, value) => {
+  const el = document.querySelector(`[data-f="${name}"]`);
+  if (!el) return;
+  if (name === "refs.roots") el.value = (value || []).join("\n");
+  else if (el.type === "checkbox") el.checked = !!value;
+  else if (value === null || value === undefined) el.value = "";
+  else el.value = value;
+};
+
+const getField = (name) => {
+  const el = document.querySelector(`[data-f="${name}"]`);
+  if (!el) return undefined;
+  if (name === "refs.roots") return el.value.split("\n").map(s => s.trim()).filter(Boolean);
+  if (el.type === "checkbox") return el.checked;
+  if (el.type === "number") return el.value === "" ? 0 : Number(el.value);
+  return el.value;
+};
+
+const collect = () => {
+  const out = {};
+  for (const el of FIELDS) {
+    const [section, key] = el.dataset.f.split(".");
+    out[section] = out[section] || {};
+    out[section][key] = getField(el.dataset.f);
+    if (key === "api_key" && !el.value) delete out[section][key];
+  }
+  out.context.spine = $("#spine").checked;
+  out.refs.enabled = $("#refsOn").checked;
+  return out;
+};
+
+const render = (s) => {
+  $("#ver").textContent = "v" + s.version;
+  const chips = [];
+  const advOn = s.slots.advanced.configured;
+  chips.push(`<span class="chip">今日 ${s.guard.daily_limit === 0 ? "不限" : s.guard.daily_limit} 次</span>`);
+  chips.push(`<span class="chip ${s.slots.base.configured ? "on" : "off"}">基础 ${s.slots.base.configured ? s.slots.base.model : "未配置"}</span>`);
+  chips.push(`<span class="chip ${advOn ? "on" : "off"}">进阶 ${advOn ? s.slots.advanced.model : "空槽位"}</span>`);
+  chips.push(`<span class="chip ${s.refs.enabled ? "on" : ""}">refs ${s.refs.enabled ? "开" : "关"}</span>`);
+  chips.push(`<span class="chip">${s.server.host}:${s.server.port}</span>`);
+  $("#chips").innerHTML = chips.join("");
+
+  setField("base.base_url", s.slots.base.base_url);
+  setField("base.model", s.slots.base.model);
+  setField("base.protocol", s.slots.base.protocol);
+  setField("base.thinking", s.slots.base.thinking);
+  setField("advanced.base_url", s.slots.advanced.base_url);
+  setField("advanced.model", s.slots.advanced.model);
+  setField("advanced.protocol", s.slots.advanced.protocol);
+  setField("advanced.thinking", s.slots.advanced.thinking);
+  for (const f of ["max_calls_per_turn", "daily_limit", "min_interval_s"]) setField("guard." + f, s.guard[f]);
+  setField("context.ctx_limit", s.context.ctx_limit);
+  setField("context.target_ratio", s.context.target_ratio);
+  $("#spine").checked = !!s.context.spine;
+  setField("artifacts.max_age_days", s.artifacts.max_age_days);
+  setField("artifacts.max_total_mb", s.artifacts.max_total_mb);
+  $("#refsOn").checked = !!s.refs.enabled;
+  setField("refs.roots", s.refs.roots);
+  setField("server.host", s.server.host);
+  setField("server.port", s.server.port);
+
+  // 密钥只回报「有没有」，占位提示要能看出状态
+  document.querySelector('[data-f="base.api_key"]').placeholder = s.slots.base.has_key ? "已设置（留空＝不改）" : "未设置";
+  document.querySelector('[data-f="advanced.api_key"]').placeholder = s.slots.advanced.has_key ? "已设置（留空＝不改）" : "未设置";
+
+  if (s.env_exists) document.querySelector("#saveMsg").textContent = "";
+};
+
+const loadKeys = async () => {
+  const rows = await api("keys");
+  $("#keyRows").innerHTML = rows.length ? rows.map(k => `
+    <tr>
+      <td><code>${k.id}</code></td>
+      <td>${k.label || "—"}</td>
+      <td>${(k.created_at || "").replace("T", " ")}</td>
+      <td>${k.calls || 0}</td>
+      <td>${k.enabled ? "有效" : "已吊销"}</td>
+      <td>${k.enabled ? `<button class="danger" data-revoke="${k.id}">吊销</button>` : ""}</td>
+    </tr>`).join("") : `<tr><td colspan="6" style="color:var(--muted)">还没有 key</td></tr>`;
+  document.querySelectorAll("[data-revoke]").forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm("吊销后这把 key 立刻失效，确定？")) return;
+      await api("keys/revoke", { id: btn.dataset.revoke });
+      loadKeys();
+    };
+  });
+};
+
+const refresh = async () => {
+  try {
+    const s = await api("state");
+    showApp();
+    render(s);
+    loadKeys();
+  } catch (e) {
+    if (e.message !== "未登录") $("#saveMsg").textContent = e.message;
+  }
+};
+
+$("#loginBtn").onclick = async () => {
+  $("#loginOut").textContent = "";
+  try {
+    await api("login", { token: $("#tok").value.trim() });
+    $("#tok").value = "";
+    refresh();
+  } catch (e) {
+    $("#loginOut").textContent = e.message;
+    $("#loginOut").className = "out bad";
+  }
+};
+$("#tok").onkeydown = (e) => { if (e.key === "Enter") $("#loginBtn").click(); };
+
+document.querySelectorAll("[data-test]").forEach(btn => {
+  btn.onclick = async () => {
+    const slot = btn.dataset.test;
+    const out = $("#out-" + slot);
+    out.textContent = "探测中…";
+    out.className = "out";
+    const values = {
+      base_url: getField(slot + ".base_url"),
+      model: getField(slot + ".model"),
+      protocol: getField(slot + ".protocol"),
+      api_key: document.querySelector(`[data-f="${slot}.api_key"]`).value,
+    };
+    try {
+      const d = await api("test", { slot, values });
+      if (!d.reachable) {
+        out.textContent = "连不上：" + (d.detail || ("HTTP " + d.status));
+        out.className = "out bad";
+        return;
+      }
+      const bits = [];
+      if (d.models && d.models.length) bits.push("模型 " + d.models.slice(0, 3).join(", "));
+      if (d.context) bits.push("窗口 " + d.context);
+      if (d.model_known === false) bits.push("注意：所填模型不在列表里");
+      out.textContent = "通" + (bits.length ? " · " + bits.join(" · ") : "");
+      out.className = "out ok";
+    } catch (e) {
+      out.textContent = e.message;
+      out.className = "out bad";
+    }
+  };
+});
+
+$("#saveBtn").onclick = async () => {
+  const msg = $("#saveMsg");
+  msg.className = "msg";
+  msg.textContent = "保存中…";
+  try {
+    const r = await api("save", { values: collect() });
+    const bar = $("#restartBar");
+    if (r.changed.length) {
+      bar.classList.remove("hidden");
+      bar.innerHTML = `已写入 <code>${r.config_path}</code>，共 ${r.changed.length} 项。` +
+        `<br>这些改动要重启网关才生效：<code>python -m steward serve</code>` +
+        (r.warnings.length ? `<br>注意：${r.warnings.join("；")}` : "");
+      msg.textContent = "已保存，等待重启";
+      msg.className = "msg ok";
+    } else {
+      msg.textContent = "没有改动";
+    }
+    refresh();
+  } catch (e) {
+    msg.textContent = e.message;
+    msg.className = "msg bad";
+  }
+};
+
+$("#newKey").onclick = async () => {
+  try {
+    const d = await api("keys/new", { label: $("#keyLabel").value.trim() });
+    const box = $("#newKeyBox");
+    box.style.display = "block";
+    box.innerHTML = `新 key（只显示这一次，复制走）：<br><code>${d.token}</code>`;
+    $("#keyLabel").value = "";
+    loadKeys();
+  } catch (e) {
+    $("#newKeyBox").style.display = "block";
+    $("#newKeyBox").textContent = e.message;
+  }
+};
+
+refresh();
+</script>
+</body>
+</html>

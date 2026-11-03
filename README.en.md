@@ -4,10 +4,11 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-354%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.1.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-381%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.2.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > Your local model is the workhorse; the cloud is the specialist you call in. steward owns everything in between: when spending money is worth it, whether the context still fits, and how to keep the archive from filling your disk.
+> **Open `http://127.0.0.1:27418/` for the console** — fill both slots, tune the quota, issue project keys, never touch the command line.
 
 ```
 agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local model (default)
@@ -16,14 +17,14 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 
 | | |
 |---|---|
-| Version | **v1.1.0** ([release notes](docs/releases/v1.1.0.md)) |
+| Version | **v1.2.0** ([release notes](docs/releases/v1.2.0.md)) |
 | License | **Apache-2.0** ([LICENSE](LICENSE) · [NOTICE](NOTICE)) — commercial use, modification, closed-source distribution, with a patent grant |
-| Shape | single-process FastAPI gateway, stateless |
+| Shape | single-process FastAPI gateway, stateless; web console on the same port |
 | Default port | 27418 |
 | Wire protocol | `/v1/chat/completions` + `/v1/responses` (converted both ways) |
 | Dependencies | fastapi / uvicorn / httpx / PyYAML — no database |
 | Size | 5,824 lines of Python (comments included), 14 modules |
-| Tests | 354: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · the rest unit and end-to-end |
+| Tests | 381: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · console 27 · the rest unit and end-to-end |
 | Per-turn injection | 531 tokens (system + quota + tool definition) |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 
@@ -187,14 +188,22 @@ cd steward
 # 1. dependencies (Python 3.11+)
 pip install -r requirements.txt
 
-# 2. configure both slots, then issue the first project key
-python -m steward init
-
-# 3. start
+# 2. start with the shipped example config
 python -m steward serve
+
+# 3. open http://127.0.0.1:27418/, fill both slots, save, restart
 ```
 
-No local model yet? Point both `base_url`s at any OpenAI-compatible endpoint during `init`; `python -m steward test` tells you whether they answer.
+**Start with the console** — no YAML editing: type the URL, model name and API key, hit "test connection" to prove it answers, then save. Keys go into the adjacent `.env` (`config.yaml` keeps the `${BASE_API_KEY}` placeholder) and every comment in the config file survives.
+
+The CLI is still there, and equivalent:
+
+```bash
+python -m steward init          # interactive wizard, good for one-shot setup
+python -m steward serve --check # validate the config without starting
+```
+
+No local model yet? Point both `base_url`s at any OpenAI-compatible endpoint; `python -m steward test` tells you whether they answer.
 
 Once running:
 
@@ -210,7 +219,7 @@ base_url = "http://127.0.0.1:27418/v1"
 api_key  = "st-..."                 # printed once by init, only the hash is stored
 ```
 
-**The key is shown exactly once.** Lose it and issue a new one, revoke the old — the gateway stores only a hash and cannot recover it.
+**The key is shown exactly once.** Lose it and issue a new one, revoke the old — the gateway stores only a hash and cannot recover it. The console's *project key* panel issues and revokes them, with the same one-time display.
 
 On first connection, run `python -m steward ctx`: it prints the real window, the input budget and the counting method. Most "the model suddenly got dumb" problems are visible in those three numbers.
 
@@ -261,6 +270,52 @@ python -m steward serve --check -c config.yaml
 
 `GET /health` reports the same state as `advanced.configured: false`.
 
+### 4.3 The console
+
+The same port also serves a UI: open `http://127.0.0.1:27418/`. The API lives under `/v1/*`, the console at `/`; they do not interfere.
+
+What it edits:
+
+| Panel | What you can change |
+|---|---|
+| Base / advanced slot | URL, model name, upstream key, protocol, thinking — each slot has a **test connection** button, so you confirm it answers *before* saving |
+| Quota | Per-request cap, daily total, minimum interval |
+| Context | Window cap, trim target, spine toggle |
+| Archive / refs | Retention days, size cap, outbound toggle and allowlist |
+| Listener | Host and port |
+| Project keys | Issue, list, revoke (plaintext shown once) |
+
+Getting in needs a passphrase, printed in the startup banner and stored in `state/console.token`:
+
+```
+  console http://127.0.0.1:27418/  (slots, quota, keys)
+  pass    CP5jJsFQ45yUZRBKuGW_tOPj
+```
+
+It stays the same across restarts, so a browser session survives one. Delete the file if you want a new one.
+
+**Why not "open and edit".** This page rewrites configuration and reveals whether a key is set. Sitting on loopback does not protect it from two things: another web page POSTing cross-site (any tab can reach `127.0.0.1:27418`), and other scripts on the same machine. Hence:
+
+- The session cookie is `HttpOnly` + `SameSite=Strict`, and write endpoints also require the `Origin` to match — the first stops cross-site cookie sending, the second stops cross-site construction;
+- Eight wrong passphrases lock it for a minute;
+- The API only ever reports *whether* a slot has a key, never the key.
+
+**What happens on save** (all three on the server; the page is just a form):
+
+1. **Values are replaced line by line, comments preserved.** Rewriting the whole file would turn `config.yaml` from documentation into machine output.
+2. **Keys go to `.env`, not YAML.** The config keeps `${BASE_API_KEY}` — copying a config around should not carry two upstream keys with it. An empty field means "leave it alone"; otherwise every save would wipe the existing key.
+3. **Validate before writing.** The candidate goes through the same `validate()` the startup path uses; if it fails, the old file stays untouched and the reason is shown. A config that saves but cannot start is worse than one that refuses to save.
+
+**A save needs a restart** to take effect:
+
+```bash
+# Ctrl+C, then
+python -m steward serve
+```
+
+There is no supervisor, and the gateway cannot restart itself in-process — it holds the port, so the replacement would fight it for the same socket. The console says so, and shows the config path.
+
+
 ---
 
 ## 5. Layout
@@ -279,13 +334,16 @@ python -m steward serve --check -c config.yaml
 │   ├── spine.py               task spine
 │   ├── artifacts.py           archive · batching · reclamation
 │   ├── refs.py                local file allowlist and audit trail
+│   ├── webconsole.py          web console: routes, config writing, session
+│   ├── web/console.html       console page (single file, no external deps)
 │   ├── server.py              FastAPI routes, auth, tool loop
 │   ├── __main__.py            serve / init / test / key / ctx / refs / artifacts
+│   ├── envfile.py             .env reading and writing (init + console)
 │   └── README.md              implementation notes and troubleshooting (Chinese)
 ├── docs/                      three diagrams, generated by scripts/gen_diagrams.py
 ├── scripts/                   integration tests, live checks, diagram generation, publishing
 │   └── publish.py             push to GitHub: git first, Git Data API as fallback
-├── tests/                     354 cases
+├── tests/                     381 cases
 │   └── fixtures/              363-message history sample used by the audit
 ├── legacy/                    archives of two earlier generations, not recommended
 ├── ARCHITECTURE.md            decisions and the alternatives that lost (Chinese)
@@ -381,7 +439,7 @@ refs:          # let the cloud read local files. Off by default — the only out
 ## 8. Tests
 
 ```bash
-python -m pytest tests -q                    # 354
+python -m pytest tests -q                    # 381
 python -m pytest tests/test_audit.py -s -q   # just the comparison tables
 python scripts/ctx_live.py --fit 130000 --spine   # one real trim + spine against a live model
 ```
@@ -438,6 +496,8 @@ Those files are kept to explain **why things are the way they are**, not as reco
 **The spine is a summary, not a backup.** Dropped error text and code fragments do not come back, though they are mostly on disk. The real risk is the model **inventing** the missing part, so the spine always ends with "re-confirm details with tools instead of guessing".
 
 **Trimming costs a prefix recompute.** Rewriting the middle of the history invalidates the llama.cpp prefix cache. Hence "trim rarely but deeply", with `min_clear_tokens` making each trim worth its cost. If your prefill is far faster than 1305 tok/s, raise `target_ratio` toward 0.8 and trim more finely and more often.
+
+**Console changes need a restart.** The gateway does not supervise itself, and cannot restart in-process — the new process would fight the old one for the same port. The console writes the config correctly and safely; applying it is the command after `Ctrl+C`.
 
 **Silent truncation is only detectable after the fact.** Upstream returns 200 and the content looks fine; only a `prompt_tokens` well below the estimate gives it away. Once detected the gateway permanently shrinks the budget, but that turn already lost information.
 

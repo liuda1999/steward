@@ -25,7 +25,15 @@ import httpx
 import uvicorn
 
 from . import __version__
-from .config import DEFAULT_PORT, COMMON_PORTS, EndpointCfg, load_config, looks_sequential
+from .envfile import write_env
+from .config import (
+    COMMON_PORTS,
+    DEFAULT_PORT,
+    EndpointCfg,
+    find_config,
+    load_config,
+    looks_sequential,
+)
 from .artifacts import Store
 from .context import Estimator, Measurer, Prober
 from .keys import KeyStore
@@ -125,25 +133,6 @@ def _describe_holder(port: int) -> str:
     except Exception:  # noqa: BLE001 - 查占用者只是锦上添花，查不到不该影响报错
         return ""
     return ""
-
-
-def _write_env(path: Path, values: dict[str, str]) -> None:
-    """合并写入 .env，不动已有条目。"""
-    existing: dict[str, str] = {}
-    if path.exists():
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if "=" in line and not line.strip().startswith("#"):
-                name, value = line.split("=", 1)
-                existing[name.strip()] = value.strip()
-    existing.update({k: v for k, v in values.items() if v})
-
-    lines = ["# steward 上游凭据，不要提交到仓库", ""]
-    lines += [f"{k}={v}" for k, v in existing.items()]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
 
 
 def _ping(ep: EndpointCfg, timeout: float = 60.0) -> tuple[bool, str, int]:
@@ -349,7 +338,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print(f"[配置]     单请求上限={cfg.guard.max_calls_per_turn} 每日={cfg.guard.daily_limit} 间隔={cfg.guard.min_interval_s}s")
         return 0
 
-    app = create_app(cfg)
+    # 控制台要写回配置文件，所以得知道它在哪。load_config 里已经解析过一次，
+    # 这里按同样的规则再算一遍，避免两处口径不同。
+    cfg_path = Path(args.config).expanduser().resolve() if args.config else find_config()
+    app = create_app(cfg, config_path=cfg_path)
     host = cfg.server.host
     shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
     # 先自己试绑一次。uvicorn 撞端口时抛的是 WinError 10048 / EADDRINUSE，
@@ -363,12 +355,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"\n  端点 http://{shown}:{cfg.server.port}/v1")
+    # flush=True：重定向到日志文件时 stdout 是全缓冲的，横幅要等进程退出才出现，
+    # 而口令只显示这一次，晚出现的口令等于没有。
+    print(f"\n  端点 http://{shown}:{cfg.server.port}/v1", flush=True)
     if host in ("0.0.0.0", "::"):
         for ip in _lan_ips():
-            print(f"  局域网 http://{ip}:{cfg.server.port}/v1")
-        print("  每台设备单独签发：python -m steward key new --label 设备名")
-    print(f"  key  {cfg.auth.keys_file}\n")
+            print(f"  局域网 http://{ip}:{cfg.server.port}/v1", flush=True)
+        print("  每台设备单独签发：python -m steward key new --label 设备名", flush=True)
+    print(f"  key  {cfg.auth.keys_file}", flush=True)
+    console = getattr(app.state, "console", None)
+    if console is not None:
+        print(f"\n  控制台 http://{shown}:{cfg.server.port}/  （填槽位、改配额、签发 key）", flush=True)
+        print(f"  口令   {console.token}", flush=True)
+        # Windows 上 chmod 0600 是空操作，别在这里承诺一个不成立的权限
+        perm = "权限 0600" if os.name != "nt" else "Windows 上靠目录 ACL，chmod 不生效"
+        print(f"        也存在 {console.path}（{perm}，别提交到仓库）", flush=True)
+    print(flush=True)
     uvicorn.run(app, host=cfg.server.host, port=cfg.server.port, log_level=cfg.server.log_level)
     return 0
 
@@ -454,7 +456,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     env_path = cfg_path.parent / ".env"
     if values["base_key"] or values["adv_key"]:
-        _write_env(
+        write_env(
             env_path,
             {"BASE_API_KEY": values["base_key"], "ADVANCED_API_KEY": values["adv_key"]},
         )

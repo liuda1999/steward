@@ -4,10 +4,11 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-354%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.1.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-381%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.2.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > 本地模型是主力，云端是外援。steward 管这中间的一切：什么时候值得花钱、窗口装不装得下、档案怎么不把磁盘写满。
+> **打开 `http://127.0.0.1:27418/` 就是控制台** —— 填两个槽位的 API、调配额、签发项目 key，都不用碰命令行。
 
 ```
 智能体 ──OpenAI 兼容──▶ 127.0.0.1:27418/v1 ──┬── 本地模型（默认）
@@ -16,14 +17,14 @@
 
 | | |
 |---|---|
-| 版本 | **v1.1.0**（[发布说明](docs/releases/v1.1.0.md)） |
+| 版本 | **v1.2.0**（[发布说明](docs/releases/v1.2.0.md)） |
 | 许可证 | **Apache-2.0**（[LICENSE](LICENSE) · [NOTICE](NOTICE)）—— 可商用、可修改、可闭源分发，附专利授权 |
-| 形态 | 单进程 FastAPI 网关，无状态 |
+| 形态 | 单进程 FastAPI 网关，无状态；同一端口带 Web 控制台 |
 | 默认端口 | 27418 |
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
 | 规模 | 5,824 行 Python（含注释），14 个模块 |
-| 测试 | 354 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 其余为各层单测与端到端 |
+| 测试 | 381 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 27 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -187,14 +188,22 @@ cd steward
 # 1. 装依赖（Python 3.11+）
 pip install -r requirements.txt
 
-# 2. 初始化：先配本地模型，再配云端，最后签发一把项目 key
-python -m steward init
-
-# 3. 启动
+# 2. 启动（先用随包示例配置）
 python -m steward serve
+
+# 3. 打开 http://127.0.0.1:27418/ ，填两个槽位，保存，重启
 ```
 
-没有本地模型也能先跑起来看个究竟——`init` 里把两个 `base_url` 都填任意 OpenAI 兼容端点即可，`python -m steward test` 会告诉你通不通。
+**推荐从控制台开始**，不用改 YAML：把地址、模型名、API key 填进去，点「测试连接」确认通，再点保存。密钥会写进同目录 `.env`（`config.yaml` 里只留 `${BASE_API_KEY}` 占位），配置文件的注释原样保留。
+
+命令行也留着，两种方式等价：
+
+```bash
+python -m steward init          # 交互式向导，适合一次配完
+python -m steward serve --check # 只校验配置，不启动
+```
+
+没有本地模型也能先跑起来看个究竟——把两个 `base_url` 都填任意 OpenAI 兼容端点即可，`python -m steward test` 会告诉你通不通。
 
 启动后：
 
@@ -210,7 +219,7 @@ base_url = "http://127.0.0.1:27418/v1"
 api_key  = "st-..."                 # init 时打印过一次，之后只存 hash
 ```
 
-**key 只在签发时显示一次。** 丢了就重新签发、吊销旧的 —— 网关只存 hash，找不回来。
+**key 只在签发时显示一次。** 丢了就重新签发、吊销旧的 —— 网关只存 hash，找不回来。控制台的「项目 key」一节可以签发和吊销，同样是只显示一次。
 
 改造后第一次连客户端，建议先跑一遍 `python -m steward ctx`：它会把真实窗口、输入预算、计数方式全打出来。很多"模型忽然变笨"的问题，从这三个数字就能看出来。
 
@@ -261,6 +270,52 @@ python -m steward serve --check -c config.yaml
 
 `GET /health` 里也有这个状态：`advanced.configured: false`。
 
+### 4.3 控制台
+
+同一个端口上还有一套界面：浏览器打开 `http://127.0.0.1:27418/` 就是它。API 端点在 `/v1/*`，控制台在 `/`，互不干扰。
+
+能做的事：
+
+| 位置 | 能改什么 |
+|---|---|
+| 基础 / 进阶槽位 | 地址、模型名、上游 key、协议、thinking —— 每个槽位带「测试连接」，**存之前先确认真能通** |
+| 配额 | 单请求上限、每日总量、最小间隔 |
+| 上下文 | 窗口上限、裁剪水位、骨架开关 |
+| 存档 / refs | 保留天数、容量上限、外发开关与白名单 |
+| 监听 | 地址与端口 |
+| 项目 key | 签发、查看、吊销（明文只显示一次） |
+
+进门要一个口令。它在启动横幅里打出来，也存在 `state/console.token`：
+
+```
+  控制台 http://127.0.0.1:27418/  （填槽位、改配额、签发 key）
+  口令   CP5jJsFQ45yUZRBKuGW_tOPj
+```
+
+口令不会每次启动都变 —— 换了 cookie 就失效，得重新登录；不想留旧口令就删掉那个文件。
+
+**为什么不是「打开就能改」。** 这个页面能改配置、能看到密钥设置没设置，摆在本机也挡不住两件事：别的网页跨站 POST（随便哪个标签页都能打 `127.0.0.1:27418`），以及同机的其他脚本。所以：
+
+- 会话 cookie 用 `HttpOnly` + `SameSite=Strict`，写操作还要校验 `Origin` 必须同源 —— 前者挡跨站携带，后者挡跨站构造；
+- 口令连错 8 次锁一分钟，防无限猜测；
+- 接口只回报「这个槽位有没有 key」，不回吐 key 本身。
+
+**保存时会发生什么**（三件事都在服务端做，界面只是表单）：
+
+1. **按行改值，注释原样保留。** 整份重写会把 `config.yaml` 从说明书变成机器产物。
+2. **密钥写进 `.env`，不进 YAML。** 配置文件里继续是 `${BASE_API_KEY}` 占位 —— 一份配置被复制走不该带走两把 key。留空表示「不改」，否则每次保存都会把已有 key 抹掉。
+3. **先校验再落盘。** 用和启动完全相同的 `validate()` 跑一遍候选配置，不通过就原样保留旧文件并说明原因。能存进去却起不来的配置，比不让存更糟。
+
+**保存之后要重启**才生效：
+
+```bash
+# Ctrl+C 停掉，再
+python -m steward serve
+```
+
+没有守护进程，网关做不到在进程内重启自己 —— 端口还握在自己手里，重启出来的新进程会和它抢同一个端口。界面上的提示写明了这一点，配置文件路径也一并给出。
+
+
 ---
 
 ## 五、目录结构
@@ -279,13 +334,16 @@ python -m steward serve --check -c config.yaml
 │   ├── spine.py               任务骨架
 │   ├── artifacts.py           落盘 · 批量 · 回收
 │   ├── refs.py                本地文件引用的白名单与审计
+│   ├── webconsole.py          Web 控制台：路由、配置写盘、会话
+│   ├── web/console.html       控制台页面（单文件，零外部依赖）
 │   ├── server.py              FastAPI 路由、鉴权、工具循环
 │   ├── __main__.py            serve / init / test / key / ctx / refs / artifacts
+│   ├── envfile.py             .env 的读写（init 与控制台共用）
 │   └── README.md              实现细节与排错手册
 ├── docs/                        三张图，由 scripts/gen_diagrams.py 生成
 ├── scripts/                     联调、真机验证、图生成、推送
 │   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
-├── tests/                       354 个用例
+├── tests/                       381 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
 ├── ARCHITECTURE.md              架构决策与被否掉的方案
@@ -381,7 +439,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 354 个
+python -m pytest tests -q                    # 381 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```
@@ -438,6 +496,8 @@ python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨�
 **骨架是摘要，不是备份。** 丢掉的报错原文、代码片段不会回来，但那些多半已经落盘。真正的风险是模型**编造**缺失部分，所以骨架末尾固定写一句「缺细节时用工具重新确认」。
 
 **裁剪要付前缀重算的代价。** 改历史中段 = llama.cpp 前缀缓存失效。所以是「少裁但裁到位」，用 `min_clear_tokens` 保证每次裁剪都值回票价。如果你的 prefill 远快于 1305 tok/s，可以把 `target_ratio` 调到 0.8 附近，裁得更细也更勤。
+
+**控制台改完配置要重启才生效。** 网关不守护自己，也不在进程内重启 —— 那样新进程会和旧进程抢同一个端口。所以控制台只负责把配置写对、写安全，生效交给 `Ctrl+C` 之后的那条命令。
 
 **静默截断只能事后发现。** 上游 200、内容看着正常，只有 `prompt_tokens` 明显小于估算才露馅。检测到之后网关会永久收缩预算，但那一轮已经丢了信息。
 

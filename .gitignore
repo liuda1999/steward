@@ -4,10 +4,10 @@
 *.key
 *.pem
 
-# 网关自己签发的 key（只存 hash，但也不该提交）+ 运行时状态
-state/*.json
-state/*.tmp
-state/*.log
+# 运行时状态：签发的 key（只存 hash）、配额、估算系数、骨架缓存、控制台口令、
+# 临时验证目录。整个目录都是跑出来的，不该有任何一个文件进仓库。
+# 测试要用的历史样本放在 tests/fixtures/。
+state/
 
 # 交付物与工具输出存档（可能是源码片段，也不该进仓库）
 .steward/
@@ -38,3 +38,6 @@ Thumbs.db
 *.bak
 *.orig
 *.rej
+
+# 控制台口令
+console.token

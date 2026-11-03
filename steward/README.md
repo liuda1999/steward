@@ -109,6 +109,33 @@ model    = auto
 
 不管接 Claude Code、Cline、Continue、opencode 还是自己写的脚本，都是这三行。`model` 填什么都可以，网关不按它路由。
 
+## Web 控制台
+
+`/v1/*` 之外的同一端口上挂着一套界面：浏览器打开 `http://127.0.0.1:27418/`。
+
+```
+GET  /                       控制台页面（单文件，无外部依赖）
+POST /console/api/login      口令 → 会话 cookie
+GET  /console/api/state      当前配置（密钥只报告有无）+ 警告 + key 摘要
+POST /console/api/save       改配置：YAML 按行改、密钥进 .env、写前校验
+POST /console/api/test       拿未保存的值探一次上游 /v1/models
+GET  /console/api/keys       项目 key 列表
+POST /console/api/keys/new   签发（明文只返回一次）
+POST /console/api/keys/revoke 吊销
+```
+
+三个实现要点，改这个模块之前先看一眼：
+
+**按行改值，不整份重写。** `config.yaml` 是带注释的说明书，重写等于把它变成机器产物。`set_in_text()` 只替换 `section.key` 那一行的值，缩进、空行、顺序、行尾注释都留着。找不到目标键就原样返回 —— 调用方靠「写盘前校验」发现没生效。
+
+**密钥只进 `.env`。** 界面上那个密码框留空表示「不改」，清空要用 `__CLEAR__` 标记。这是为了防止每次保存都把已有 key 抹掉 —— 空串当"清空"是最容易犯的错。
+
+**写盘前跑一遍 `validate()`。** 候选文本先解析成 `AppCfg` 再校验，不通过就不落盘。用的是启动路径同一个函数（`config_from_dict`），不然会出现界面验证通过、启动时却不认。
+
+会话与口令：`state/console.token`，首次启动生成，跨重启不变；cookie 是 `hmac(token)`，`HttpOnly` + `SameSite=Strict`；写操作再校验 `Origin` 同源。只靠 cookie 不够 —— 跨站表单 POST 不会带 `Origin` 之外的任何门槛，而浏览器允许它发生。
+
+保存后要重启才生效。不做进程内重启的原因是端口：旧进程还握着 27418，新进程起来会和它抢同一个 socket。
+
 ## 局域网给多台设备用
 
 ```yaml

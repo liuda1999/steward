@@ -354,14 +354,13 @@ def load_env_file(path: Path) -> None:
             os.environ[name] = value
 
 
-def load_config(path: str | Path | None = None) -> AppCfg:
-    cfg_path = Path(path).expanduser().resolve() if path else find_config()
-    load_env_file(cfg_path.parent / ".env")
-    data: dict = {}
-    if cfg_path.exists():
-        data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+def config_from_dict(data: dict) -> AppCfg:
+    """从解析好的 YAML 造 AppCfg。
 
-    cfg = AppCfg(
+    抽出来是为了让「读配置」和「Web 控制台保存前验证」走同一套逻辑 ——
+    两份实现迟早会分叉，分叉的后果是界面上验证通过、进程启动时却不认。
+    """
+    return AppCfg(
         server=_section(ServerCfg, data.get("server")),
         auth=_section(AuthCfg, data.get("auth")),
         base=_section(EndpointCfg, _pick(data, "base", "local")),
@@ -374,6 +373,16 @@ def load_config(path: str | Path | None = None) -> AppCfg:
         public_model=str(_expand(data.get("public_model", "auto")) or "auto"),
         model_aliases=[str(_expand(x)) for x in (data.get("model_aliases") or [])],
     )
+
+
+def load_config(path: str | Path | None = None) -> AppCfg:
+    cfg_path = Path(path).expanduser().resolve() if path else find_config()
+    load_env_file(cfg_path.parent / ".env")
+    data: dict = {}
+    if cfg_path.exists():
+        data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+
+    cfg = config_from_dict(data)
 
     for key, attr, caster in (
         ("STEWARD_HOST", "host", str),

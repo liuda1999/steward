@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .artifacts import Store
 from .cloud import AdvancedClient, flatten_content
-from . import __version__
+from . import __version__, webconsole
 from .config import AppCfg
 from .context import Estimator, Limits, Measurer, Prober, Trimmer, TrimReport
 from .guard import Guard, TurnState
@@ -207,7 +207,17 @@ def extract_token(request: Request) -> str:
     return ""
 
 
-def create_app(cfg: AppCfg, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
+def create_app(
+    cfg: AppCfg,
+    transport: httpx.AsyncBaseTransport | None = None,
+    config_path: Path | None = None,
+) -> FastAPI:
+    """组装应用。
+
+    config_path 只有 Web 控制台需要 —— 它要能写回配置文件。传 None 就不装
+    控制台：测试用 AppCfg 直接构造，没有磁盘上的配置文件可写，硬装一个
+    「能改配置」的入口只会把它改到 cwd 里那份上。
+    """
     guard = Guard(cfg.guard)
     base = BaseClient(cfg.base, transport)
     advanced = AdvancedClient(cfg.advanced, transport)
@@ -338,9 +348,12 @@ def create_app(cfg: AppCfg, transport: httpx.AsyncBaseTransport | None = None) -
         await advanced.aclose()
         await measurer.aclose()
 
-    app = FastAPI(title="steward", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="steward", version=__version__, lifespan=lifespan)
     app.state.key_store = store
     app.state.bootstrap_key = bootstrap_key
+
+    if config_path is not None:
+        app.state.console = webconsole.install(app, cfg, Path(config_path), store)
 
     async def auth(request: Request) -> None:
         if cfg.auth.mode == "off":
