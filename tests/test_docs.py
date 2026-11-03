@@ -152,3 +152,17 @@ def test_pyproject_keywords_cover_core_terms():
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     for term in ("llm-gateway", "openai-compatible", "local-llm", "context-window", "token-budget"):
         assert term in text, f"pyproject 的 keywords 缺 {term}"
+
+
+def test_logo_present_and_referenced():
+    """两版 README 顶部都要有 logo；文件缺了 GitHub 上就是一个碎图。"""
+    assert (ROOT / "docs" / "logo.jpg").is_file(), "缺 docs/logo.jpg"
+    for path in (ZH, EN):
+        assert "docs/logo.jpg" in path.read_text(encoding="utf-8"), f"{path.name} 没引用 logo"
+
+
+def test_logo_license_is_disclosed():
+    """同人图不能跟着 Apache-2.0 一起授权，必须在 NOTICE 里说清楚。"""
+    notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
+    assert "logo" in notice.lower()
+    assert "不在 Apache-2.0 授权范围内" in notice

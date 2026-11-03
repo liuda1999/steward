@@ -1,13 +1,23 @@
 # steward
 
+<img src="docs/logo.jpg" width="120" align="right" alt="steward">
+
 [简体中文](README.md) | **English**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-470%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-473%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
-> steward is a **local-first LLM gateway**: one OpenAI-compatible endpoint, two model slots. Your local model is the workhorse; the cloud is the specialist it calls in — when spending is worth it, whether the window still fits, and where deliverables go.
+> **Token-cost governance for local AI agents (a local-first LLM gateway).**
+> One **OpenAI-compatible** endpoint, two model slots: local by default, cloud on demand.
+> A day of group-chat chatter cost CNY 40–50; about 80% of it could have run locally.
+
+I ran one of those "big fat fish" agents — DSH wired into a group chat with a persona. It worked, and the bill was real: **CNY 40–50 a day**.
+
+The money did not go to answers. It went to the system prompt, tool definitions and full history resent on every single turn. Most of that work — file wrangling, small talk, reformatting, repeated confirmations — a local model can do perfectly well.
+
+steward intercepts it: **local by default, cloud only when the model asks and the gateway approves.** At that ratio the bill lands near one fifth.
 > **Open <http://127.0.0.1:27418/> for the console** — fill the slots, tune quotas, issue keys, never touch the command line.
 
 ```

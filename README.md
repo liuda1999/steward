@@ -1,13 +1,23 @@
 # steward
 
+<img src="docs/logo.jpg" width="120" align="right" alt="steward">
+
 **简体中文** | [English](README.en.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-470%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-473%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
-> steward 是一个**本地优先的 LLM 网关**（local-first LLM gateway）：一个 **OpenAI-compatible** 端点、两个模型槽位。本地模型当主力，云端当外援 —— 什么时候值得花钱、窗口装不装得下、交付物往哪放，都由它记账。
+> **给本地 AI 助手用的 token 成本治理网关（local-first LLM gateway）。**
+> 一个 **OpenAI-compatible** 端点、两个模型槽位：日常走本地，云端按需。
+> 群里陪聊一天四五十块；其中八成的活，本地模型本来就能接。
+
+我养过一只「大肥鱼」—— DSH 跑起来、接进社交群、写好人设。它很能干，账单也很实在：**一天四五十块**。
+
+翻开销才看清：钱不是花在「回答」上，是花在**每一轮都要重发的 system prompt、工具定义和整段历史**上。而其中大部分——整理文件、简单寒暄、格式转换、重复确认——本地模型完全做得来。
+
+steward 就把这块拦下来：**默认走本地，云端只在模型主动申请、且网关核准后才出场**。按这个比例跑，成本大约是原来的两成。
 > **浏览器打开 <http://127.0.0.1:27418/> 就是控制台** —— 填槽位、改配额、签发 key，不用碰命令行。
 
 ```

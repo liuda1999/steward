@@ -35,7 +35,7 @@ from typing import Any
 
 import yaml
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from . import __version__
 from .cloud import AdvancedClient
@@ -437,6 +437,18 @@ def install(app, cfg: AppCfg, cfg_path: Path, keys: KeyStore, page: Path | None 
         except OSError:
             return HTMLResponse("<h1>控制台页面缺失</h1><p>找不到 steward/web/console.html</p>", status_code=500)
         return HTMLResponse(html)
+
+    @app.get("/logo.jpg")
+    async def logo():
+        """页眉与 favicon 用的标识图。
+
+        和 console.html 放同一目录：换页面（测试用临时目录）时图片也跟着走，
+        不会出现「页面在、图不在」。文件缺失只影响观感，不该 500。
+        """
+        path = html_path.parent / "logo.jpg"
+        if not path.is_file():
+            return JSONResponse({"ok": False, "error": "logo.jpg 不存在"}, status_code=404)
+        return FileResponse(path, media_type="image/jpeg")
 
     @router.post("/login")
     async def login(request: Request) -> JSONResponse:

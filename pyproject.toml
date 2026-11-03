@@ -69,8 +69,9 @@ include = ["steward*"]
 
 [tool.setuptools.package-data]
 # console.html 是控制台的整个界面，漏了它装完就是一个空白页。
+# logo.jpg 是页眉与 favicon，漏了页面能开但顶上是空白方框。
 # config.example.yaml 是配置模板，控制台"另存为模板"和首次引导都指着它。
-steward = ["web/*.html", "config.example.yaml"]
+steward = ["web/*.html", "web/*.jpg", "config.example.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

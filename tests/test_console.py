@@ -386,6 +386,22 @@ def test_console_does_not_install_without_config_path(tmp_path):
     assert not hasattr(app.state, "console")
 
 
+def test_console_serves_logo(tmp_path):
+    """页眉图标要真的能取到，否则浏览器里就是一个碎图方框。"""
+    app, _, _ = make_app(tmp_path)
+
+    async def go():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:27418"
+        ) as c:
+            return await c.get("/logo.jpg")
+
+    resp = asyncio.run(go())
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/jpeg"
+    assert resp.content[:2] == b"\xff\xd8", "返回的不是 JPEG"
+
+
 # ---------------------------------------------------------------- key 管理
 
 
