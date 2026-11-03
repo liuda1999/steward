@@ -12,7 +12,7 @@ import httpx
 from .artifacts import Artifact, Store
 from .config import EndpointCfg
 from .prompts import CONSULT_SYSTEM_PROMPT, render_brief
-from .netpolicy import client_kwargs
+from .netpolicy import client_kwargs, mentions_unknown_param
 from .responses import chat_to_responses, responses_to_chat
 from .upstream import build_headers, join_url
 
@@ -51,6 +51,8 @@ class AdvancedClient:
         self.cfg = cfg
         self._transport = transport
         self._force_close = False
+        # 这个上游认不认 chat_template_kwargs。第一次撞上 400 就记住。
+        self._thinking_param_ok = True
         self._client = self._build_client()
 
     def _build_client(self) -> httpx.AsyncClient:
@@ -109,7 +111,8 @@ class AdvancedClient:
             "max_tokens": self.cfg.max_tokens,
             "stream": False,
         }
-        if self.cfg.thinking in ("off", "on"):
+        # 已经确认这个上游不认就别再带了（每轮多一个 400 太浪费）
+        if self.cfg.thinking in ("off", "on") and self._thinking_param_ok:
             payload["chat_template_kwargs"] = {"enable_thinking": self.cfg.thinking == "on"}
 
         started = time.perf_counter()
@@ -118,6 +121,21 @@ class AdvancedClient:
         body = chat_to_responses(payload) if use_responses else payload
         try:
             resp = await self._post(url, body)
+            if (
+                resp.status_code == 400
+                and self._thinking_param_ok
+                and "chat_template_kwargs" in body
+                and mentions_unknown_param(resp.text)
+            ):
+                # 云端 API 不认本地专有的思维链开关：摘掉重发一次，
+                # 并记住它不认，以后不再带。
+                self._thinking_param_ok = False
+                logger.warning(
+                    "上游不认 chat_template_kwargs（多半是云端 API），已摘掉该参数重发一次"
+                )
+                payload.pop("chat_template_kwargs", None)
+                body = chat_to_responses(payload) if use_responses else payload
+                resp = await self._post(url, body)
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             return ConsultResult(False, error=f"connect: {exc}", elapsed_ms=int((time.perf_counter() - started) * 1000), not_sent=True)
         except httpx.TimeoutException:

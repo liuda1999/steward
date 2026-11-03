@@ -600,3 +600,71 @@ def test_different_slots_are_not_flagged(tmp_path):
         "advanced": {"base_url": "http://y/v1", "model": "n"},
     })
     assert not any("同一个模型" in w for w in cfg.warnings())
+
+
+# ---------------------------------------------------------------- 一键重启
+
+
+def test_restart_without_uvicorn_refuses(tmp_path):
+    """测试环境里没有 uvicorn server 对象，要明确说不能重启，而不是假装成功。"""
+    app, _, console = make_app(tmp_path)
+    status, body = call(app, "post", "/console/api/restart", {}, token=console.token, use_header=True)
+    assert status == 409
+    assert "重启" in body["error"]
+
+
+def test_restart_sets_the_flag(tmp_path):
+    """重启请求要真的把标志置上，serve 循环才知道要重来一遍。"""
+    from steward.server import RESTART, take_restart
+
+    class FakeServer:
+        should_exit = False
+
+    app, _, console = make_app(tmp_path)
+    app.state.uvicorn_server = FakeServer()
+    RESTART["want"] = False
+    status, body = call(app, "post", "/console/api/restart", {}, token=console.token, use_header=True)
+    assert status == 200
+    assert body["data"]["restarting"] is True
+    assert RESTART["want"] is True
+    assert take_restart() is True
+    assert take_restart() is False  # 取一次就清掉
+
+
+def test_restart_requires_login(tmp_path):
+    app, _, _ = make_app(tmp_path)
+    status, _ = call(app, "post", "/console/api/restart", {})
+    assert status == 401
+
+
+def test_restart_rejects_foreign_origin(tmp_path):
+    app, _, console = make_app(tmp_path)
+    status, _ = call(
+        app,
+        "post",
+        "/console/api/restart",
+        {},
+        token=console.token,
+        use_header=True,
+        headers={"origin": "https://evil.example"},
+    )
+    assert status == 403
+
+
+def test_env_overrides_are_cleared_before_reload():
+    """重启时改了 .env 要能读到新值。
+
+    `load_env_file` 的规则是「已存在的环境变量优先」，所以第一次启动读进
+    os.environ 的旧值会一直压着 .env。
+    """
+    import os
+
+    from steward.__main__ import _clear_env_overrides
+
+    os.environ["BASE_API_KEY"] = "old"
+    os.environ["STEWARD_PORT"] = "1234"
+    os.environ["SOMETHING_ELSE"] = "keep"
+    _clear_env_overrides()
+    assert "BASE_API_KEY" not in os.environ
+    assert "STEWARD_PORT" not in os.environ
+    assert os.environ.get("SOMETHING_ELSE") == "keep"

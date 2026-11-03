@@ -13,7 +13,7 @@ import logging
 import httpx
 
 from .config import EndpointCfg
-from .netpolicy import client_kwargs
+from .netpolicy import client_kwargs, mentions_unknown_param
 from .responses import chat_to_responses, responses_to_chat
 
 logger = logging.getLogger("steward")
@@ -37,6 +37,8 @@ class BaseClient:
         self.cfg = cfg
         self._transport = transport
         self._force_close = False
+        # 这个上游认不认 chat_template_kwargs。第一次撞上 400 就记住。
+        self._thinking_param_ok = True
         self._client = self._build_client()
 
     def _build_client(self) -> httpx.AsyncClient:
@@ -60,7 +62,27 @@ class BaseClient:
             url = join_url(self.cfg.base_url, "chat/completions")
             body = payload
 
+        if not self._thinking_param_ok and "chat_template_kwargs" in body:
+            # 这个上游不认本地专有的思维链开关（多半是云端 API），别再带了
+            body = dict(body)
+            body.pop("chat_template_kwargs", None)
+
         resp = await self._client.post(url, json=body)
+        if (
+            resp.status_code == 400
+            and self._thinking_param_ok
+            and "chat_template_kwargs" in body
+            and mentions_unknown_param(resp.text)
+        ):
+            # 这个上游不认本地专有的思维链开关。摘掉重发一次，
+            # 并记住它不认，以后不再带 —— 否则每轮都要多一次 400。
+            self._thinking_param_ok = False
+            logger.warning(
+                "上游不认 chat_template_kwargs（多半是云端 API），已摘掉该参数重发一次"
+            )
+            body = dict(body)
+            body.pop("chat_template_kwargs", None)
+            resp = await self._client.post(url, json=body)
         resp.raise_for_status()
         data = resp.json()
         if self.cfg.protocol == "responses":

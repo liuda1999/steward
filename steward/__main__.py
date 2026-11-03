@@ -39,7 +39,7 @@ from .context import Estimator, Measurer, Prober
 from .keys import KeyStore
 from .refs import DEFAULT_DENY, Resolver
 from .responses import chat_to_responses, responses_to_chat
-from .server import create_app
+from .server import create_app, take_restart
 from .upstream import probe
 
 COMMANDS = {"serve", "init", "test", "key", "ctx", "refs", "artifacts"}
@@ -341,22 +341,29 @@ def cmd_serve(args: argparse.Namespace) -> int:
     # 控制台要写回配置文件，所以得知道它在哪。load_config 里已经解析过一次，
     # 这里按同样的规则再算一遍，避免两处口径不同。
     cfg_path = Path(args.config).expanduser().resolve() if args.config else find_config()
-    app = create_app(cfg, config_path=cfg_path)
+    return asyncio.run(_serve_loop(cfg_path, args))
+
+
+def _clear_env_overrides() -> None:
+    """清掉会被配置覆盖的环境变量。
+
+    `load_env_file` 的规则是「已存在的环境变量优先」，所以第一次启动读进
+    os.environ 的旧值会一直压着 .env —— 重启时改了 .env 也不会生效。
+    重启前把这几类变量清掉，才能读到新的。
+    """
+    prefixes = ("STEWARD_", "BASE_", "ADVANCED_", "LOCAL_", "CLOUD_")
+    for name in [k for k in os.environ if k.startswith(prefixes)]:
+        os.environ.pop(name, None)
+
+
+def _banner(cfg, app) -> None:
+    """启动横幅。flush=True 是必须的：
+
+    重定向到日志文件时 stdout 是全缓冲的，横幅要等进程退出才出现，
+    而口令只显示这一次，晚出现的口令等于没有。
+    """
     host = cfg.server.host
     shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
-    # 先自己试绑一次。uvicorn 撞端口时抛的是 WinError 10048 / EADDRINUSE，
-    # 混在启动日志里一闪而过，用户只看到「shutdown complete」，
-    # 会以为是配置写错了。端口冲突要一句话说清是谁的问题。
-    taken = _port_owner(host, cfg.server.port)
-    if taken:
-        print(f"[端口] {shown}:{cfg.server.port} 已被占用{taken}。", file=sys.stderr)
-        print(
-            f"[端口] 停掉它，或用 --port 换一个（默认 {DEFAULT_PORT}，也可以改 config.yaml 的 server.port）。",
-            file=sys.stderr,
-        )
-        return 1
-    # flush=True：重定向到日志文件时 stdout 是全缓冲的，横幅要等进程退出才出现，
-    # 而口令只显示这一次，晚出现的口令等于没有。
     print(f"\n  端点 http://{shown}:{cfg.server.port}/v1", flush=True)
     if host in ("0.0.0.0", "::"):
         for ip in _lan_ips():
@@ -371,8 +378,50 @@ def cmd_serve(args: argparse.Namespace) -> int:
         perm = "权限 0600" if os.name != "nt" else "Windows 上靠目录 ACL，chmod 不生效"
         print(f"        也存在 {console.path}（{perm}，别提交到仓库）", flush=True)
     print(flush=True)
-    uvicorn.run(app, host=cfg.server.host, port=cfg.server.port, log_level=cfg.server.log_level)
-    return 0
+
+
+async def _serve_loop(cfg_path: Path, args: argparse.Namespace) -> int:
+    """起服务；控制台请求重启时，重新读配置再起一次。
+
+    **同进程重启**，不派生新进程：uvicorn 退出时就把端口放了，新一轮直接
+    绑上去，不会和「还没退干净的老进程」抢同一个 socket。日志也还在用户
+    原来那个终端里 —— 派生进程的话日志会跑到没人看的地方去。
+    """
+    first = True
+    while True:
+        if not first:
+            _clear_env_overrides()
+        cfg = load_config(cfg_path)
+        host, port = cfg.server.host, cfg.server.port
+        shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+
+        # 先自己试绑一次。uvicorn 撞端口时抛的是 WinError 10048 / EADDRINUSE，
+        # 混在启动日志里一闪而过，用户只看到「shutdown complete」，
+        # 会以为是配置写错了。端口冲突要一句话说清是谁的问题。
+        taken = _port_owner(host, port)
+        if taken:
+            print(f"[端口] {shown}:{port} 已被占用{taken}。", file=sys.stderr)
+            print(
+                f"[端口] 停掉它，或用 --port 换一个（默认 {DEFAULT_PORT}，也可以改 config.yaml 的 server.port）。",
+                file=sys.stderr,
+            )
+            return 1
+
+        app = create_app(cfg, config_path=cfg_path)
+        _banner(cfg, app)
+
+        server = uvicorn.Server(
+            uvicorn.Config(app, host=host, port=port, log_level=cfg.server.log_level)
+        )
+        # 控制台要拿到这个对象才能触发优雅退出
+        app.state.uvicorn_server = server
+
+        await server.serve()
+
+        if not take_restart():
+            return 0
+        first = False
+        print("\n[重启] 重新读取配置…", flush=True)
 
 
 def cmd_init(args: argparse.Namespace) -> int:

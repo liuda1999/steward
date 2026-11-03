@@ -4,8 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-413%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.3.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-422%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.4.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > 本地模型是主力，云端是外援。steward 管这中间的一切：什么时候值得花钱、窗口装不装得下、档案怎么不把磁盘写满。
 > **打开 `http://127.0.0.1:27418/` 就是控制台** —— 填两个槽位的 API、调配额、签发项目 key，都不用碰命令行。
@@ -17,14 +17,14 @@
 
 | | |
 |---|---|
-| 版本 | **v1.3.0**（[发布说明](docs/releases/v1.3.0.md)） |
+| 版本 | **v1.4.0**（[发布说明](docs/releases/v1.4.0.md)） |
 | 许可证 | **Apache-2.0**（[LICENSE](LICENSE) · [NOTICE](NOTICE)）—— 可商用、可修改、可闭源分发，附专利授权 |
 | 形态 | 单进程 FastAPI 网关，无状态；同一端口带 Web 控制台 |
 | 默认端口 | 27418 |
 | 对外协议 | `/v1/chat/completions` + `/v1/responses`（双向互转） |
 | 依赖 | fastapi / uvicorn / httpx / PyYAML，无数据库 |
 | 规模 | 5,824 行 Python（含注释），14 个模块 |
-| 测试 | 413 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 38 · 网络策略 7 · 其余为各层单测与端到端 |
+| 测试 | 422 个：可靠性 20 · 对照审计 23 · 端口/槽位/版本 31 · 文档一致性 9 · 控制台 44 · 网络策略 7 · 云端参数 4 · 其余为各层单测与端到端 |
 | 每轮注入 | 531 tokens（system + 配额 + 工具定义） |
 | 上游 | 任何 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 
@@ -269,6 +269,42 @@ python -m steward serve --check -c config.yaml
 ```
 
 `GET /health` 里也有这个状态：`advanced.configured: false`。
+### 4.5 模型标识怎么填：两个槽位都能填云端
+
+**「模型标识」就是上游服务商认的那个字符串，一个字都不能差。** 网关不解释、不纠正，原样转发给上游 —— 这既是它的自由，也是它的责任：你填 `gpt-4o-mini` 而上游只有 `gpt-4o`，得到的是上游的 400，不是一句友好的提示。
+
+以 DeepSeek 为例（`https://api.deepseek.com`，OpenAI 兼容）：
+
+| 你要的 | 模型标识填什么 |
+|---|---|
+| Flash / 常规对话 | `deepseek-chat` |
+| Pro / 深度思考 | `deepseek-reasoner` |
+
+**推理版是另一个模型名，不是一个开关。** 这是最容易搞错的地方：`thinking: off/on` 这个开关发的是 `chat_template_kwargs.enable_thinking`，那是 llama.cpp / vLLM / Qwen 这类**本地服务**认识的扩展参数，云端 API 根本不认。
+
+所以：
+
+- **本地模型**（llama.cpp / Ollama / vLLM）：模型标识填模型名或 GGUF 路径（`qwen3:8b`、`/models/qwen3-30b.gguf`），`thinking` 开关有效；
+- **云端模型**：模型标识填服务商给的精确名字，`thinking` 开关**基本无效** —— 要不要思考，取决于你选了哪个模型名。
+
+别的服务商同理：OpenAI 是 `gpt-4o-mini` / `gpt-4o`，Anthropic 走 OpenAI 兼容层时是 `claude-3-5-haiku`，vLLM 起服务时是 `--served-model-name` 定的那个名字。
+
+**别猜，问上游。** 控制台的「测试连接」会读上游的 `/v1/models`，把**真实存在的模型名列出来，点一下就填进「模型标识」**：
+
+```
+可用模型（点一下填入）：deepseek-chat、deepseek-reasoner
+```
+
+填的名字不在列表里时，测试结果会直接提示「所填模型不在上游列表里」。
+
+**顺带修了一个会让你白跑一趟的坑。** 两个槽位都可以指向云端 API，而 `chat_template_kwargs` 是本地服务专有的参数——严格的云端（OpenAI、Azure）会因为不认识的参数直接 400：
+
+```
+Unrecognized request argument supplied: chat_template_kwargs
+```
+
+现在撞上这种 400，网关会**摘掉这个参数重发一次**，并记住这个端点不认，以后不再带。本地服务该收的参数照收。
+
 ### 4.4 两个容易看不懂的数
 
 **`裁到预算的 0.65` 是什么。**
@@ -385,7 +421,7 @@ python -m steward serve
 ├── docs/                        三张图，由 scripts/gen_diagrams.py 生成
 ├── scripts/                     联调、真机验证、图生成、推送
 │   └── publish.py               推 GitHub：git push 优先，走不通退回 Git Data API
-├── tests/                       413 个用例
+├── tests/                       422 个用例
 │   └── fixtures/                审计用的 363 条历史样本
 ├── legacy/                      两代前身的存档，不推荐使用
 ├── ARCHITECTURE.md              架构决策与被否掉的方案
@@ -481,7 +517,7 @@ refs:          # 让云端读本地文件。默认关闭 —— 这是唯一主�
 ## 八、测试
 
 ```bash
-python -m pytest tests -q                    # 413 个
+python -m pytest tests -q                    # 422 个
 python -m pytest tests/test_audit.py -s -q   # 只看对照表
 python scripts/ctx_live.py --fit 130000 --spine   # 真机验一次裁剪 + 骨架
 ```

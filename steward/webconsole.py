@@ -530,6 +530,45 @@ def install(app, cfg: AppCfg, cfg_path: Path, keys: KeyStore, page: Path | None 
             }
         )
 
+    @router.post("/restart")
+    async def restart(request: Request) -> JSONResponse:
+        """改完配置立即重启。
+
+        走的是**同进程重启**：标记一下，让 serve 循环在 uvicorn 退出后
+        重新读配置再起一次。端口在两次服务之间就释放了，不会和「还没退
+        干净的老进程」抢同一个 socket，日志也还在用户原来那个终端里。
+
+        派生新进程的做法看着更常规，但那会让两个进程抢端口，还要处理
+        孤儿进程和日志去向 —— 为了一次重启引入这些不值当。
+        """
+        try:
+            guard(request)
+        except ConsoleError as exc:
+            return fail(exc, 403 if "来源" in str(exc) else 401)
+
+        server = getattr(request.app.state, "uvicorn_server", None)
+        if server is None:
+            return fail(
+                ConsoleError(
+                    "这个进程不是以 serve 方式启动的，没法自动重启；"
+                    "请手动重启网关（或用 python -m steward serve 启动它）"
+                ),
+                409,
+            )
+
+        from .server import request_restart
+
+        request_restart()
+
+        async def stop_soon() -> None:
+            # 先让响应发出去，再关服务；否则浏览器只看到一个断连，
+            # 分不清是「重启了」还是「崩了」
+            await asyncio.sleep(0.3)
+            server.should_exit = True
+
+        asyncio.create_task(stop_soon())
+        return JSONResponse({"ok": True, "data": {"restarting": True}})
+
     @router.get("/keys")
     async def list_keys(request: Request) -> JSONResponse:
         if not session.authorized(request):

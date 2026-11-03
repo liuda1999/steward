@@ -4,8 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-413%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.3.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-422%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.4.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > Your local model is the workhorse; the cloud is the specialist you call in. steward owns everything in between: when spending money is worth it, whether the context still fits, and how to keep the archive from filling your disk.
 > **Open `http://127.0.0.1:27418/` for the console** — fill both slots, tune the quota, issue project keys, never touch the command line.
@@ -17,14 +17,14 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 
 | | |
 |---|---|
-| Version | **v1.3.0** ([release notes](docs/releases/v1.3.0.md)) |
+| Version | **v1.4.0** ([release notes](docs/releases/v1.4.0.md)) |
 | License | **Apache-2.0** ([LICENSE](LICENSE) · [NOTICE](NOTICE)) — commercial use, modification, closed-source distribution, with a patent grant |
 | Shape | single-process FastAPI gateway, stateless; web console on the same port |
 | Default port | 27418 |
 | Wire protocol | `/v1/chat/completions` + `/v1/responses` (converted both ways) |
 | Dependencies | fastapi / uvicorn / httpx / PyYAML — no database |
 | Size | 5,824 lines of Python (comments included), 14 modules |
-| Tests | 413: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · console 38 · net policy 7 · the rest unit and end-to-end |
+| Tests | 422: reliability 20 · differential audit 23 · port/slots/version 31 · docs consistency 9 · console 44 · net policy 7 · cloud params 4 · the rest unit and end-to-end |
 | Per-turn injection | 531 tokens (system + quota + tool definition) |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 
@@ -269,6 +269,42 @@ python -m steward serve --check -c config.yaml
 ```
 
 `GET /health` reports the same state as `advanced.configured: false`.
+### 4.5 How to fill in the model identifier — either slot can point at a cloud API
+
+**"Model identifier" is the exact string your provider knows.** The gateway does not interpret or correct it; it forwards it verbatim. That is both the freedom and the responsibility: if you write `gpt-4o-mini` and the provider only has `gpt-4o`, you get the provider's 400, not a friendly hint.
+
+DeepSeek, for example (`https://api.deepseek.com`, OpenAI-compatible):
+
+| What you want | Model identifier |
+|---|---|
+| Flash / regular chat | `deepseek-chat` |
+| Pro / deep reasoning | `deepseek-reasoner` |
+
+**The reasoning variant is a different model name, not a switch.** This is the easiest thing to get wrong: the `thinking: off/on` toggle sends `chat_template_kwargs.enable_thinking`, an extension that **locally hosted** services (llama.cpp / vLLM / Qwen) understand and cloud APIs do not.
+
+So:
+
+- **Local models** (llama.cpp / Ollama / vLLM): the identifier is a model name or a GGUF path (`qwen3:8b`, `/models/qwen3-30b.gguf`), and the `thinking` toggle works;
+- **Cloud models**: the identifier is the provider's exact name, and the `thinking` toggle is **essentially inert** — whether you get reasoning depends on which model name you picked.
+
+Same for everyone else: OpenAI is `gpt-4o-mini` / `gpt-4o`; Anthropic through an OpenAI-compatible layer is `claude-3-5-haiku`; a vLLM server is whatever `--served-model-name` was set to.
+
+**Don't guess — ask the upstream.** The console's "test connection" reads the upstream's `/v1/models` and lists the **model names that actually exist**, one click to fill the field:
+
+```
+available models (click to fill): deepseek-chat, deepseek-reasoner
+```
+
+If your name is not in the list, the test result says so outright.
+
+**Fixed a trap that would have cost you a round trip.** Either slot can point at a cloud API, and `chat_template_kwargs` is a local-service parameter — strict clouds (OpenAI, Azure) reject it outright:
+
+```
+Unrecognized request argument supplied: chat_template_kwargs
+```
+
+Now, on that specific 400, the gateway **strips the parameter, resends once**, and remembers that this endpoint does not know it — so it never sends it again. Local services still receive it.
+
 ### 4.4 Two numbers that look cryptic
 
 **What "trim to 0.65 of the budget" means.**
@@ -347,14 +383,23 @@ It stays the same across restarts, so a browser session survives one. Delete the
 2. **Keys go to `.env`, not YAML.** The config keeps `${BASE_API_KEY}` — copying a config around should not carry two upstream keys with it. An empty field means "leave it alone"; otherwise every save would wipe the existing key.
 3. **Validate before writing.** The candidate goes through the same `validate()` the startup path uses; if it fails, the old file stays untouched and the reason is shown. A config that saves but cannot start is worse than one that refuses to save.
 
-**A save needs a restart** to take effect:
+**After saving, press "restart now" and it takes effect.**
+
+The confirmation strip that appears after a successful save carries a button:
+
+```
+written to config.yaml, 3 items.
+changes need a restart to take effect.  [restart now]
+```
+
+This is a **same-process restart**, not a spawned child: uvicorn releases the port as it exits, the next round binds it directly, and nothing has to fight over the socket. Your logs stay in the terminal you started it from. Environment variables that the config overrides are cleared before the reload, so a changed key in `.env` takes effect too.
+
+Restarting by hand works just as well:
 
 ```bash
 # Ctrl+C, then
 python -m steward serve
 ```
-
-There is no supervisor, and the gateway cannot restart itself in-process — it holds the port, so the replacement would fight it for the same socket. The console says so, and shows the config path.
 
 
 ---
@@ -385,7 +430,7 @@ There is no supervisor, and the gateway cannot restart itself in-process — it 
 ├── docs/                      three diagrams, generated by scripts/gen_diagrams.py
 ├── scripts/                   integration tests, live checks, diagram generation, publishing
 │   └── publish.py             push to GitHub: git first, Git Data API as fallback
-├── tests/                     413 cases
+├── tests/                     422 cases
 │   └── fixtures/              363-message history sample used by the audit
 ├── legacy/                    archives of two earlier generations, not recommended
 ├── ARCHITECTURE.md            decisions and the alternatives that lost (Chinese)
@@ -481,7 +526,7 @@ refs:          # let the cloud read local files. Off by default — the only out
 ## 8. Tests
 
 ```bash
-python -m pytest tests -q                    # 413
+python -m pytest tests -q                    # 422
 python -m pytest tests/test_audit.py -s -q   # just the comparison tables
 python scripts/ctx_live.py --fit 130000 --spine   # one real trim + spine against a live model
 ```
@@ -539,7 +584,7 @@ Those files are kept to explain **why things are the way they are**, not as reco
 
 **Trimming costs a prefix recompute.** Rewriting the middle of the history invalidates the llama.cpp prefix cache. Hence "trim rarely but deeply", with `min_clear_tokens` making each trim worth its cost. If your prefill is far faster than 1305 tok/s, raise `target_ratio` toward 0.8 and trim more finely and more often.
 
-**Console changes need a restart.** The gateway does not supervise itself, and cannot restart in-process — the new process would fight the old one for the same port. The console writes the config correctly and safely; applying it is the command after `Ctrl+C`.
+**Console changes need a restart.** The gateway does not supervise itself, but it can **restart in the same process**: press "restart now" and uvicorn exits, the config is reloaded, and it starts again — the port is free in between, and the logs stay where they were. Restarting by hand (`Ctrl+C`, then `python -m steward serve`) works too.
 
 **Silent truncation is only detectable after the fact.** Upstream returns 200 and the content looks fine; only a `prompt_tokens` well below the estimate gives it away. Once detected the gateway permanently shrinks the budget, but that turn already lost information.
 

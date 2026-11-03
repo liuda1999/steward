@@ -75,3 +75,22 @@ def env_ca() -> str:
         if path and os.path.isfile(path):
             return path
     return ""
+
+
+def mentions_unknown_param(text: str, param: str = "chat_template_kwargs") -> bool:
+    """上游是不是因为「不认识这个参数」而报的错？
+
+    `chat_template_kwargs` 是 llama.cpp / vLLM / Qwen 这类本地服务认识的
+    扩展开关，严格的云端 API（OpenAI、Azure）会直接 400：
+
+        Unrecognized request argument supplied: chat_template_kwargs
+
+    认出这个形状，才能判断「摘掉它重发一次就行」。
+    """
+    t = (text or "").lower()
+    if param.lower() not in t:
+        return False
+    return any(
+        word in t
+        for word in ("unrecognized", "unknown", "unsupported", "not permitted", "invalid parameter", "extra")
+    )

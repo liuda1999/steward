@@ -113,6 +113,24 @@ def _first_user_text(messages: list[dict], limit: int = 300) -> str:
     return ""
 
 
+#: 重启请求。控制台点「立即重启」时置位，serve 循环看到后重新读配置再起一次。
+#: 做成同进程重启而不是派生新进程：端口在两次服务之间就释放了，不会和
+#: 新进程抢；日志也还在用户原来那个终端里。
+RESTART: dict[str, bool] = {"want": False}
+
+
+def request_restart() -> None:
+    RESTART["want"] = True
+
+
+def take_restart() -> bool:
+    """取出并清掉重启请求。"""
+    if RESTART["want"]:
+        RESTART["want"] = False
+        return True
+    return False
+
+
 def merge_tools(client_tools: Any, tool_def: dict | None) -> tuple[list[dict], bool]:
     tools = [t for t in (client_tools or []) if isinstance(t, dict)]
     if tool_def is None:
