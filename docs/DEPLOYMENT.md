@@ -19,10 +19,12 @@ cd steward
 
 Windows 用 `scripts\start.bat`。
 
+**之后每次启动都是同一条命令**——配置已经在 `config.yaml` 里，不会覆盖。
+
 这条命令会依次做完四件事，并把每一步的结果打出来：
 
 ```
-  steward 1.5.0  启动检查
+  steward 1.6.1  启动检查
 
   [1/4] Python 3.13.14  OK
   [2/4] 依赖齐全  OK

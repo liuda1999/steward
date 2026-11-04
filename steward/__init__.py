@@ -5,7 +5,7 @@
 如果包初始化时还没赋值，就会撞上「部分初始化的模块没有这个属性」。
 """
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 
 from .config import AppCfg, load_config  # noqa: E402
 from .server import create_app  # noqa: E402

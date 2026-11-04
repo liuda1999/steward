@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-479%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.6.0-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Version](https://img.shields.io/badge/version-1.6.1-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **Token-cost governance for local AI agents (a local-first LLM gateway).**
 > One **OpenAI-compatible** endpoint, two model slots: local by default, cloud on demand.
@@ -27,7 +27,7 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 
 | | |
 |---|---|
-| Version | **v1.6.0** ([release notes](docs/releases/v1.6.0.md)) |
+| Version | **v1.6.1** ([release notes](docs/releases/v1.6.1.md)) |
 | Protocol | `/v1/chat/completions` + `/v1/responses`, OpenAI-compatible |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 | Shape | single-process FastAPI, no database; web console on the same port |
@@ -65,9 +65,9 @@ The first run checks the environment, generates `config.yaml`, starts the gatewa
 No script? From the repo root:
 
 ```bash
-python -m steward start     # check env -> prepare config -> start (use this first)
-python -m steward serve     # config already in place: start directly
-python -m steward --help    # list every subcommand
+python3 -m steward start    # check env -> prepare config -> start (use this first)
+python3 -m steward serve    # config already in place: start directly
+python3 -m steward --help   # list every subcommand
 ```
 
 > Once it is up, open <http://127.0.0.1:27418/> for the console. The gateway and console start fine even when the model endpoint is down — only `/v1` calls will fail.
@@ -158,8 +158,8 @@ If it will not open: check the port printed in the startup banner (it is not 274
 Prefer the CLI:
 
 ```bash
-python -m steward init            # interactive wizard
-python -m steward serve --check   # validate the config without starting
+python3 -m steward init            # interactive wizard
+python3 -m steward serve --check   # validate the config without starting
 ```
 
 Install it as a global command (optional):
@@ -237,7 +237,7 @@ When unsure, ask the upstream: the console's "test connection" lists the real na
 | `steward key new` / `list` / `revoke` | issue / list / revoke project keys |
 | `steward artifacts` | archive usage, `--clean` to reclaim |
 
-Without the global command, replace `steward` with `python -m steward`.
+Without the global command, replace `steward` with `python3 -m steward`.
 
 ---
 

@@ -100,7 +100,11 @@ python -m steward serve
 或者一条命令走完（检查环境 → 生成配置 → 起服务）：
 
 ```bash
-./scripts/start.sh          # Windows: scripts\start.bat
+./scripts/start.sh          # Linux / macOS
+```
+
+```bat
+scripts\start.bat           # Windows
 ```
 
 `init` 会依次问：基础模型的地址/模型/key → 进阶模型的地址/模型/key/每日上限 → **自动探测该用哪种协议** → 写 `config.yaml` → 上游 key 写进同目录 `.env` → 签发项目 key 并打印。**那串 `st-...` 只出现这一次。**
