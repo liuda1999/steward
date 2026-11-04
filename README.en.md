@@ -9,11 +9,11 @@
 [![Tests](https://img.shields.io/badge/tests-484%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.6.4-informational.svg)](https://github.com/liuda1999/steward/releases)
 
-> **Token-cost governance for local AI agents (a local-first LLM gateway).**
-> One **OpenAI-compatible** endpoint, two model slots: local by default, cloud on demand.
-> A day of group-chat chatter cost CNY 40–50; about 80% of it could have run locally.
+> **A local-first LLM gateway that blends local inference with the cloud, cutting cloud API costs sharply.**
+> One **OpenAI-compatible** endpoint, two model slots: everyday requests stay local, the cloud only steps in when it is really needed.
+> Callers see a single endpoint and one key — they never need to know which model answered.
 
-I ran one of those "big fat fish" agents — DSH wired into a group chat with a persona. It worked, and the bill was real: **CNY 40–50 a day**.
+One concrete example. I ran one of those "big fat fish" agents — DSH wired into a group chat with a persona. It worked, and the bill was real: **CNY 40–50 a day**.
 
 The money did not go to answers. It went to the system prompt, tool definitions and full history resent on every single turn. Most of that work — file wrangling, small talk, reformatting, repeated confirmations — a local model can do perfectly well.
 

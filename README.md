@@ -9,11 +9,11 @@
 [![Tests](https://img.shields.io/badge/tests-484%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.6.4-informational.svg)](https://github.com/liuda1999/steward/releases)
 
-> **给本地 AI 助手用的 token 成本治理网关（local-first LLM gateway）。**
-> 一个 **OpenAI-compatible** 端点、两个模型槽位：日常走本地，云端按需。
-> 群里陪聊一天四五十块；其中八成的活，本地模型本来就能接。
+> **本地推理与云端混用的 LLM 网关（local-first LLM gateway），大幅降低云端 API 开销。**
+> 一个 **OpenAI-compatible** 端点、两个模型槽位：日常请求走本地，云端只在真正需要时出场。
+> 下游只看到同一个接口、同一把 key —— 不需要知道背后是本地还是云端。
 
-我养过一只「大肥鱼」—— DSH 跑起来、接进社交群、写好人设。它很能干，账单也很实在：**一天四五十块**。
+举个最直观的例子。我养过一只「大肥鱼」—— DSH 跑起来、接进社交群、写好人设。它很能干，账单也很实在：**一天四五十块**。
 
 翻开销才看清：钱不是花在「回答」上，是花在**每一轮都要重发的 system prompt、工具定义和整段历史**上。而其中大部分——整理文件、简单寒暄、格式转换、重复确认——本地模型完全做得来。
 
