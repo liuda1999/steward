@@ -399,6 +399,22 @@ def test_start_bat_falls_back_when_py_is_missing():
     assert 'if not defined PY set "PY=py -3"' not in text
 
 
+def test_start_bat_scans_common_install_dirs():
+    """PATH 上没有任何可用 Python 时，还要去常见安装目录找。
+
+    真实反馈：机器上唯一能用的 Python 不在 PATH 上（PATH 里只有微软商店的
+    占位程序），脚本只查 PATH 时报 "No Python found"，项目照样起不来。
+    所以最后一步要扫标准安装目录，包括 WorkBuddy 自带的那份。
+    """
+    text = (ROOT / "scripts" / "start.bat").read_text(encoding="utf-8")
+    assert ":scan" in text, "没有目录扫描兜底"
+    assert r"%LOCALAPPDATA%\Programs\Python\Python3*" in text
+    assert r"%ProgramFiles%\Python3*" in text
+    assert r"%USERPROFILE%\.workbuddy\binaries\python\versions\*" in text
+    # 盘符路径要加引号；"py -3" 不能加，否则 cmd 会去找一个叫 "py -3" 的程序
+    assert '"%PY:~1,1%"==":"' in text
+
+
 def test_start_scripts_are_documented():
     """启动脚本必须出现在 README 里，否则没人知道它存在。"""
     for name in ("README.md", "README.en.md"):

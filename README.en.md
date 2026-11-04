@@ -6,8 +6,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-479%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.6.1-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-480%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.6.2-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **Token-cost governance for local AI agents (a local-first LLM gateway).**
 > One **OpenAI-compatible** endpoint, two model slots: local by default, cloud on demand.
@@ -27,7 +27,7 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 
 | | |
 |---|---|
-| Version | **v1.6.1** ([release notes](docs/releases/v1.6.1.md)) |
+| Version | **v1.6.2** ([release notes](docs/releases/v1.6.2.md)) |
 | Protocol | `/v1/chat/completions` + `/v1/responses`, OpenAI-compatible |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 | Shape | single-process FastAPI, no database; web console on the same port |
