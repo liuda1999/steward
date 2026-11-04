@@ -540,6 +540,34 @@ def test_key_panel_offers_copy_and_reissue():
     assert "data-reissue" in page, "没有「重新签发」入口"
 
 
+def test_console_escapes_upstream_model_names():
+    """上游返回的模型名要转义后再进 innerHTML。
+
+    模型名不是我们写的：一个引号就能截断 `data-pick` 属性，一个尖括号
+    就能注入标签。控制台持有口令，这类注入的后果不只是难看。
+    """
+    page = (Path(__file__).resolve().parents[1] / "steward" / "web" / "console.html").read_text(
+        encoding="utf-8"
+    )
+    assert "const esc =" in page, "没有 HTML 转义函数"
+    assert 'data-pick="${esc(m)}"' in page, "模型名没转义就拼进属性"
+
+
+def test_reissue_issues_before_revoking():
+    """重签必须先发新的、再吊销旧的。
+
+    反过来的话，签发那一步失败（网络抖动、文件写不进去）会让那台设备
+    直接失去访问权，而用户手里没有任何可用的 key。
+    """
+    page = (Path(__file__).resolve().parents[1] / "steward" / "web" / "console.html").read_text(
+        encoding="utf-8"
+    )
+    start = page.index("data-reissue")       # 重签按钮的渲染位置，handler 在它之后
+    i_new = page.index('api("keys/new"', start)
+    i_revoke = page.index('api("keys/revoke"', start)
+    assert i_new < i_revoke, "先吊销后签发：签发失败会把设备锁在门外"
+
+
 # ---------------------------------------------------------------- key 管理
 
 

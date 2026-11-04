@@ -780,12 +780,18 @@ const render = (s) => {
   // 一清就把「已保存」和英文的 "Saved" 一起抹掉了。
 };
 
+// 进 innerHTML 的动态内容一律先转义：模型名来自上游，标签来自用户输入，
+// 直接拼会把引号/尖括号带进 DOM（轻则属性断裂，重则脚本注入）。
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => (
+  { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+));
+
 // 明文只显示这一次，所以给个复制按钮。控制台常从局域网 IP 打开，不是安全上下文，
 // navigator.clipboard 可能不存在；那就退回到「选中文本，让用户按 Ctrl+C」。
 const showIssued = (token) => {
   const box = $("#newKeyBox");
   box.style.display = "block";
-  box.innerHTML = `${t("keys.newPrefix")}<br><code>${token}</code> <button id="copyKey">${t("keys.copy")}</button>`;
+  box.innerHTML = `${t("keys.newPrefix")}<br><code>${esc(token)}</code> <button id="copyKey">${t("keys.copy")}</button>`;
   $("#copyKey").onclick = async () => {
     try {
       await navigator.clipboard.writeText(token);
@@ -805,21 +811,27 @@ const loadKeys = async () => {
   const rows = await api("keys");
   $("#keyRows").innerHTML = rows.length ? rows.map(k => `
     <tr>
-      <td><code>${k.id}</code></td>
-      <td>${k.label || "—"}</td>
-      <td>${(k.created_at || "").replace("T", " ")}</td>
+      <td><code>${esc(k.id)}</code></td>
+      <td>${esc(k.label || "—")}</td>
+      <td>${esc((k.created_at || "").replace("T", " "))}</td>
       <td>${k.calls || 0}</td>
       <td>${k.enabled ? t("keys.active") : t("keys.revoked")}</td>
-      <td>${k.enabled ? `<button data-reissue="${k.id}" data-label="${k.label || ""}">${t("keys.reissue")}</button> <button class="danger" data-revoke="${k.id}">${t("keys.revoke")}</button>` : ""}</td>
+      <td>${k.enabled ? `<button data-reissue="${esc(k.id)}" data-label="${esc(k.label || "")}">${t("keys.reissue")}</button> <button class="danger" data-revoke="${esc(k.id)}">${t("keys.revoke")}</button>` : ""}</td>
     </tr>`).join("") : `<tr><td colspan="6" style="color:var(--muted)">${t("keys.none")}</td></tr>`;
   document.querySelectorAll("[data-reissue]").forEach(btn => {
     btn.onclick = async () => {
       if (!confirm(t("keys.confirmReissue"))) return;
-      // 明文取不回来，只能吊销旧的、换一把新的；标签沿用，设备那边换一下即可。
-      await api("keys/revoke", { id: btn.dataset.reissue });
-      const d = await api("keys/new", { label: btn.dataset.label || "" });
-      showIssued(d.token);
-      loadKeys();
+      // 先签发新的，再吊销旧的。反过来的话，签发这一步失败就把设备锁在门外了。
+      try {
+        const d = await api("keys/new", { label: btn.dataset.label || "" });
+        await api("keys/revoke", { id: btn.dataset.reissue });
+        showIssued(d.token);
+        loadKeys();
+      } catch (e) {
+        const box = $("#newKeyBox");
+        box.style.display = "block";
+        box.textContent = e.message;
+      }
     };
   });
   document.querySelectorAll("[data-revoke]").forEach(btn => {
@@ -896,7 +908,7 @@ document.querySelectorAll("[data-test]").forEach(btn => {
         pick.className = "out";
         pick.id = "pick-" + slot;
         pick.innerHTML = t("test.models") +
-          d.models.slice(0, 8).map(m => `<a href="#" data-pick="${m}">${m}</a>`).join("、");
+          d.models.slice(0, 8).map(m => `<a href="#" data-pick="${esc(m)}">${esc(m)}</a>`).join("、");
         pick.querySelectorAll("[data-pick]").forEach(a => {
           a.onclick = (ev) => {
             ev.preventDefault();
