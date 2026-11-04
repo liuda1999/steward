@@ -671,8 +671,10 @@ def test_audit_archive_scenarios(tmp_path):
     n = len(n_files)
     rows.append(["一次裁剪 60 条工具输出", f"{o} 个 / {o_bytes // 1024} KB", f"{n} 个 / {n_bytes // 1024} KB"])
     assert (o, n) == (60, 1)
-    # 合并不能带来体积膨胀：抬头是每文件几十字节，60 份抬头才 2 KB 量级
-    assert abs(n_bytes - o_bytes) < o_bytes * 0.05, f"合并后体积异常：{o_bytes} -> {n_bytes}"
+    # 合并不能带来体积膨胀：抬头是每文件几十字节，60 份合计 2 KB 量级。
+    # 别拿正文的百分比当阈值：正文大小会随平台换行（CRLF/LF）和临时目录
+    # 路径长度变化，Linux 上同样 1.3 KB 的抬头就会超过 5%。用绝对上限。
+    assert abs(n_bytes - o_bytes) < 4096, f"合并后体积异常：{o_bytes} -> {n_bytes}"
 
     # 场景 2：同一份内容跨三个轮次
     old = _store(tmp_path / "s2o", LegacyStore)

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 
@@ -283,4 +284,8 @@ def test_admin_context_exposes_refs_policy(tmp_path):
 
     body = asyncio.run(go()).json()
     assert body["refs"]["enabled"] is True
-    assert body["refs"]["roots"] == [str(root.resolve())]
+    # CI 的 Windows runner 把 TEMP 给成 8.3 短路径（C:\Users\RUNNER~1\...），
+    # 而 root.resolve() 会展开成长路径（...\runneradmin\...）。两边都先
+    # 规范化再比，否则这条只在 CI 的 Windows job 上红，本机永远发现不了。
+    roots = [Path(p).resolve() for p in body["refs"]["roots"]]
+    assert roots == [root.resolve()]

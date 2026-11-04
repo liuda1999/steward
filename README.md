@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
 [![Tests](https://github.com/liuda1999/steward/actions/workflows/tests.yml/badge.svg)](https://github.com/liuda1999/steward/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-1.6.7-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Version](https://img.shields.io/badge/version-1.6.8-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **本地推理与云端混用的 LLM 网关（local-first LLM gateway），大幅降低云端 API 开销。**
 > 一个 **OpenAI-compatible** 端点、两个模型槽位：日常请求走本地，云端只在真正需要时出场。
@@ -27,7 +27,7 @@ steward 就把这块拦下来：**默认走本地，云端只在模型主动申�
 
 | | |
 |---|---|
-| 版本 | **v1.6.7**（[发布说明](docs/releases/v1.6.7.md)） |
+| 版本 | **v1.6.8**（[发布说明](docs/releases/v1.6.8.md)） |
 | 协议 | 对外只提供 `/v1/chat/completions`（OpenAI 兼容）；上游槽位可选 chat 或 responses |
 | 上游 | 任意 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 | 形态 | 单进程 FastAPI，无数据库；同一端口带 Web 控制台 |
