@@ -478,6 +478,22 @@ def test_console_is_bilingual():
     assert not missing, f"页面引用了字典里没有的键：{sorted(missing)}"
 
 
+def test_test_connection_replaces_the_model_pick_list():
+    """每次测试连接都要替换模型列表，不能往里追加。
+
+    真实反馈：测一次 → 点一个模型 → 再测一次，会多出一块「可用模型」；
+    点几次就叠几块。原因是 `appendChild` 之前没有移除上一轮的元素。
+    """
+    page = (Path(__file__).resolve().parents[1] / "steward" / "web" / "console.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'pick.id = "pick-" + slot' in page, "模型列表没有稳定 id，下一次测试找不到旧的"
+    marker = 'const stalePick = document.getElementById("pick-" + slot);'
+    assert marker in page, "测试开始时没有清理上一轮的模型列表"
+    after = page[page.index(marker) :]
+    assert "stalePick.remove()" in after[:200], "找到旧列表却没有移除，会越点越多"
+
+
 # ---------------------------------------------------------------- key 管理
 
 

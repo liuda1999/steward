@@ -24,7 +24,7 @@ Windows 用 `scripts\start.bat`。
 这条命令会依次做完四件事，并把每一步的结果打出来：
 
 ```
-  steward 1.6.3  启动检查
+  steward 1.6.4  启动检查
 
   [1/4] Python 3.13.14  OK
   [2/4] 依赖齐全  OK

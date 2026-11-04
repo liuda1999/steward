@@ -825,6 +825,10 @@ document.querySelectorAll("[data-test]").forEach(btn => {
     const out = $("#out-" + slot);
     out.textContent = t("test.probing");
     out.className = "out";
+    // 上一轮的「可用模型」列表先撤掉：每次测试都 append 的话，点几次就叠几块。
+    // 用固定 id 定位，而不是靠兄弟节点顺序，失败分支也不会留下旧列表。
+    const stalePick = document.getElementById("pick-" + slot);
+    if (stalePick) stalePick.remove();
     const values = {
       base_url: getField(slot + ".base_url"),
       model: getField(slot + ".model"),
@@ -849,6 +853,7 @@ document.querySelectorAll("[data-test]").forEach(btn => {
         dl.innerHTML = d.models.map(m => `<option value="${m}"></option>`).join("");
         const pick = document.createElement("div");
         pick.className = "out";
+        pick.id = "pick-" + slot;
         pick.innerHTML = t("test.models") +
           d.models.slice(0, 8).map(m => `<a href="#" data-pick="${m}">${m}</a>`).join("、");
         pick.querySelectorAll("[data-pick]").forEach(a => {
