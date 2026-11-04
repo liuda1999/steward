@@ -28,7 +28,7 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 | | |
 |---|---|
 | Version | **v1.6.4** ([release notes](docs/releases/v1.6.4.md)) |
-| Protocol | `/v1/chat/completions` + `/v1/responses`, OpenAI-compatible |
+| Protocol | Downstream is `/v1/chat/completions` only (OpenAI-compatible); each upstream slot may speak chat or responses |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 | Shape | single-process FastAPI, no database; web console on the same port |
 | Default port | 27418 |
@@ -175,6 +175,10 @@ steward start
 base_url = "http://127.0.0.1:27418/v1"
 api_key  = "st-..."        # shown once at issue time; only the hash is stored
 ```
+
+> **base_url must include `/v1`.** If a client requests `/models` or `/responses` without the prefix, it treated the root address as base_url and will only get 404s.
+>
+> **Downstream is Chat Completions only.** `responses` is an optional protocol for an **upstream slot**, not a public endpoint; a client that only speaks `/v1/responses` cannot use this gateway.
 
 **A lost key can only be reissued** — the gateway stores a sha256 and cannot recover it. The console's *project key* panel issues and revokes them, with the same one-time display.
 

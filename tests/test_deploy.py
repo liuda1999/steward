@@ -261,6 +261,19 @@ def test_start_generates_config_before_checking(tmp_path, monkeypatch):
     assert (tmp_path / "config.yaml").is_file()
 
 
+def _free_port() -> int:
+    """拿一个当前空闲的端口。
+
+    这两个用例原来写死 27418 —— 用户自己跑着网关时，测试会被真实进程占端口
+    挡下来，报「端口已被占用」，看起来像代码坏了。测试不该依赖机器当前状态。
+    """
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
 def test_port_override_is_not_lost_on_restart(tmp_path, monkeypatch):
     """`--port` 必须真的生效。
 
@@ -277,7 +290,7 @@ def test_port_override_is_not_lost_on_restart(tmp_path, monkeypatch):
 
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(
-        "server:\n  host: 127.0.0.1\n  port: 27418\n"
+        f"server:\n  host: 127.0.0.1\n  port: {_free_port()}\n"
         "base:\n  base_url: http://127.0.0.1:11434/v1\n  model: m\n",
         encoding="utf-8",
     )
@@ -291,12 +304,13 @@ def test_port_override_is_not_lost_on_restart(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cli, "create_app", spy_create)
 
-    args = argparse.Namespace(host=None, port=27441)
+    override = _free_port()
+    args = argparse.Namespace(host=None, port=override)
     with pytest.raises(_StopHere):
         asyncio.run(cli._serve_loop(cfg_path, args))
 
     assert captured, "没有走到 create_app"
-    assert captured["port"] == 27441, f"实际用了端口 {captured['port']}，不是命令行给的 27441"
+    assert captured["port"] == override, f"实际用了端口 {captured['port']}，不是命令行给的 {override}"
 
 
 def test_host_override_is_not_lost_on_restart(tmp_path, monkeypatch):
@@ -307,7 +321,7 @@ def test_host_override_is_not_lost_on_restart(tmp_path, monkeypatch):
 
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(
-        "server:\n  host: 127.0.0.1\n  port: 27418\n"
+        f"server:\n  host: 127.0.0.1\n  port: {_free_port()}\n"
         "base:\n  base_url: http://127.0.0.1:11434/v1\n  model: m\n",
         encoding="utf-8",
     )

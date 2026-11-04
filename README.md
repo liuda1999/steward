@@ -28,7 +28,7 @@ steward 就把这块拦下来：**默认走本地，云端只在模型主动申�
 | | |
 |---|---|
 | 版本 | **v1.6.4**（[发布说明](docs/releases/v1.6.4.md)） |
-| 协议 | `/v1/chat/completions` + `/v1/responses`，OpenAI 兼容 |
+| 协议 | 对外只提供 `/v1/chat/completions`（OpenAI 兼容）；上游槽位可选 chat 或 responses |
 | 上游 | 任意 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 | 形态 | 单进程 FastAPI，无数据库；同一端口带 Web 控制台 |
 | 默认端口 | 27418 |
@@ -175,6 +175,10 @@ steward start
 base_url = "http://127.0.0.1:27418/v1"
 api_key  = "st-..."        # 签发时只显示一次，之后只存 hash
 ```
+
+> **base_url 必须带 `/v1`。** 如果客户端去请求 `/models`、`/responses`（没有 `/v1` 前缀），说明它把根地址当成了 base_url，只会拿到 404。
+>
+> **对外只有 Chat Completions。** `responses` 是**上游槽位**的可选协议，不是对外端点；只会说 `/v1/responses` 的客户端连不上这个网关。
 
 **key 丢了只能重新签发** —— 网关只存 sha256，找不回来。控制台的「项目 key」可以签发和吊销，同样是只显示一次。
 
