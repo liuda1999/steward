@@ -355,9 +355,9 @@ def cmd_start(args: argparse.Namespace) -> int:
     cfg_path = Path(args.config).expanduser().resolve() if args.config else find_config()
     created = ensure_config(cfg_path)
     if created:
-        print(f"  [3/4] 首次启动，已生成配置：{cfg_path}", flush=True)
+        print(f"  [3/4] 首次启动，已生成配置：{_display_path(cfg_path)}", flush=True)
     else:
-        print(f"  [3/4] 配置就位：{cfg_path}", flush=True)
+        print(f"  [3/4] 配置就位：{_display_path(cfg_path)}", flush=True)
 
     cfg = load_config(cfg_path)
     if args.host:
@@ -433,6 +433,25 @@ def _install_deps(packages: list[str]) -> bool:
     return True
 
 
+def _configure_logging(level_name: str) -> None:
+    """按配置里的 log_level 配日志。
+
+    以前只有 `serve` 调 basicConfig，`start` 没调 —— 而 `start` 才是文档
+    推荐入口。结果 root logger 停在 WARNING：告警看得见，说明性的 INFO
+    （窗口探测结果、跳过探测的原因）全被吞掉。
+
+    basicConfig 在 root 已有 handler 时是空操作（uvicorn 可能先装过），
+    所以还要显式 setLevel 一次，保证 log_level 真的生效。
+    """
+    level = getattr(logging, (level_name or "info").upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    logging.getLogger().setLevel(level)
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     # 配置文件在哪：显式指定 > 环境变量 > 当前目录 > 首次启动时生成的位置。
     # 先定下来再读，免得读的是一份、写的（控制台保存时）是另一份。
@@ -444,7 +463,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     created = ensure_config(cfg_path)
     if created:
         print(
-            f"[配置] 首次启动：已用随包模板生成 {cfg_path}",
+            f"[配置] 首次启动：已用随包模板生成 {_display_path(cfg_path)}",
             file=sys.stderr,
         )
         print(
@@ -459,11 +478,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if args.port:
         cfg.server.port = args.port
 
-    logging.basicConfig(
-        level=getattr(logging, cfg.server.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    _configure_logging(cfg.server.log_level)
 
     problems = cfg.validate()
     if problems:
@@ -505,6 +520,19 @@ def _clear_env_overrides() -> None:
         os.environ.pop(name, None)
 
 
+def _display_path(path) -> str:
+    """尽量显示相对当前目录的路径：短、可复制，又不藏住文件在哪。
+
+    `start` / `start.bat` 会先 cd 到项目根，所以日志里的
+    `state/keys.json` 就是相对根目录的那一份。配置在项目外时
+    （`--config /abs/elsewhere`），回退到绝对路径。
+    """
+    try:
+        return str(Path(path).expanduser().resolve().relative_to(Path.cwd().resolve()))
+    except (ValueError, OSError):
+        return str(path)
+
+
 def _banner(cfg, app) -> None:
     """启动横幅。flush=True 是必须的：
 
@@ -518,14 +546,14 @@ def _banner(cfg, app) -> None:
         for ip in _lan_ips():
             print(f"  局域网 http://{ip}:{cfg.server.port}/v1", flush=True)
         print("  每台设备单独签发：python -m steward key new --label 设备名", flush=True)
-    print(f"  key  {cfg.auth.keys_file}", flush=True)
+    print(f"  key  {_display_path(cfg.auth.keys_file)}", flush=True)
     console = getattr(app.state, "console", None)
     if console is not None:
         print(f"\n  控制台 http://{shown}:{cfg.server.port}/  （填槽位、改配额、签发 key）", flush=True)
         print(f"  口令   {console.token}", flush=True)
         # Windows 上 chmod 0600 是空操作，别在这里承诺一个不成立的权限
         perm = "权限 0600" if os.name != "nt" else "Windows 上靠目录 ACL，chmod 不生效"
-        print(f"        也存在 {console.path}（{perm}，别提交到仓库）", flush=True)
+        print(f"        也存在 {_display_path(console.path)}（{perm}，别提交到仓库）", flush=True)
     print(flush=True)
 
 
@@ -559,6 +587,8 @@ async def _serve_loop(cfg_path: Path, args: argparse.Namespace) -> int:
         if not first:
             _clear_env_overrides()
         cfg = load_config(cfg_path)
+        # 每一轮都重配：重启的语义是「重读配置」，log_level 也可能被改过。
+        _configure_logging(cfg.server.log_level)
         # 命令行覆盖必须在**每一轮**都重新盖上去。
         #
         # 之前只在 cmd_serve 里盖一次，而这一行把配置重新读了一遍 ——

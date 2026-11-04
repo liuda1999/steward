@@ -227,6 +227,15 @@ class AppCfg:
     public_model: str = "auto"
     model_aliases: list[str] = field(default_factory=list)
 
+    def base_ready(self) -> bool:
+        """基础槽位是否填了真实值（不是空，也不是模板占位）。
+
+        首次启动时 base 还是模板里的 `your-base-model`，此时去探上游窗口没有
+        意义：探的是一个不存在的模型，失败后只会在日志里留一句「没能探到
+        真实窗口」，看起来像报错，实际只是还没配。探测要等用户填好槽位再做。
+        """
+        return bool(self.base.base_url and self.base.model and self.base.model != PLACEHOLDER_MODEL)
+
     def validate(self) -> list[str]:
         problems: list[str] = []
         if self.auth.mode not in ("required", "off"):

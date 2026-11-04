@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "steward-gateway"
-version = "1.6.2"
+version = "1.6.3"
 description = "Local-first LLM gateway: one OpenAI-compatible endpoint, two model slots, token budget and context-window governance. 本地优先的 LLM 网关。"
 readme = "README.md"
 requires-python = ">=3.11"

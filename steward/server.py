@@ -334,32 +334,43 @@ def create_app(
             snap["daily_limit"],
             snap["max_calls_per_turn"],
         )
-        limits = await refresh_limits()
-        logger.info(
-            "上下文：窗口 %s tokens（每槽 %s / 槽位 %s / 来源 %s），输入预算 %s，估算系数 %.2f",
-            limits.per_slot,
-            limits.per_slot,
-            limits.slots,
-            limits.source,
-            current_budget(),
-            estimator.factor,
-        )
-        if limits.source in ("default", "config") and not cfg.context.ctx_limit:
-            logger.warning(
-                "没能探到上游真实窗口，按 %s 保守估计。若本地实际更小，"
-                "请在 config.yaml 里写 context.ctx_limit 显式指定。",
+        if cfg.base_ready():
+            limits = await refresh_limits()
+            logger.info(
+                "上下文：窗口 %s tokens（每槽 %s / 槽位 %s / 来源 %s），输入预算 %s，估算系数 %.2f",
                 limits.per_slot,
+                limits.per_slot,
+                limits.slots,
+                limits.source,
+                current_budget(),
+                estimator.factor,
+            )
+            if limits.source in ("default", "config") and not cfg.context.ctx_limit:
+                logger.warning(
+                    "上游没返回窗口大小，先按 %s 估计。配好模型或上游恢复后重启会自动重探；"
+                    "也可以写 context.ctx_limit 固定它。",
+                    limits.per_slot,
+                )
+            if cfg.context.enabled:
+                if await measurer.probe():
+                    logger.info("上游支持 /tokenize，上下文按精确 token 计数")
+                else:
+                    logger.info("上游没有 /tokenize，按字符类估算 + 自校准")
+        else:
+            # 首次启动：槽位还是模板占位值。这一步探不到任何真实信息，
+            # 失败后只会留下一条看起来像报错的告警。等用户在控制台填好再探。
+            limits = ctx["limits"]
+            limits.source = "unconfigured"
+            limits.finalize(cfg.context, cfg.base.max_tokens, estimator.budget_scale)
+            logger.info(
+                "基础模型还没配（base.model 是模板占位值）：跳过窗口探测。"
+                "在控制台填好槽位并点「保存并重启」后会自动探测。"
             )
         if not advanced_ready:
             logger.warning(
                 "进阶槽位空着（advanced.base_url / model 未配）：不注入 consult_cloud，"
                 "每轮少发约 500 tokens 的工具定义。纯本地模式，能用，只是没有外援。"
             )
-        if cfg.context.enabled:
-            if await measurer.probe():
-                logger.info("上游支持 /tokenize，上下文按精确 token 计数")
-            else:
-                logger.info("上游没有 /tokenize，按字符类估算 + 自校准")
         yield
         await base.aclose()
         await spine_client.aclose()
