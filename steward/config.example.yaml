@@ -114,7 +114,7 @@ refs:
   audit_file: state/refs.jsonl
 
 public_model: auto        # 客户端看到的模型名，网关不按它路由
-model_aliases: [local, steward]
+model_aliases: []         # 可选别名，会一起列在 /v1/models 里；留空则只返回 public_model 一个
 
 # 留空则用内置默认文本。想改规则改这里，不用动代码。
 prompt:

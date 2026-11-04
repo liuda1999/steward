@@ -546,7 +546,13 @@ def _banner(cfg, app) -> None:
         for ip in _lan_ips():
             print(f"  局域网 http://{ip}:{cfg.server.port}/v1", flush=True)
         print("  每台设备单独签发：python -m steward key new --label 设备名", flush=True)
-    print(f"  key  {_display_path(cfg.auth.keys_file)}", flush=True)
+    store = getattr(app.state, "key_store", None)
+    active = store.summary()["active"] if store is not None else 0
+    count = f"（已有 {active} 把）" if active else ""
+    print(f"  key  {_display_path(cfg.auth.keys_file)}{count}", flush=True)
+    if active:
+        # 明文只在签发那一刻存在（库里只存 hash），所以「去哪拿 key」必须说出来。
+        print("       忘了明文就去控制台「项目 key」：签发一把新的，或对旧条目点「重新签发」", flush=True)
     console = getattr(app.state, "console", None)
     if console is not None:
         print(f"\n  控制台 http://{shown}:{cfg.server.port}/  （填槽位、改配额、签发 key）", flush=True)

@@ -21,7 +21,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from steward.config import load_config
+from steward.config import AppCfg, AuthCfg, EndpointCfg, load_config
 from steward.keys import KeyStore
 from steward.server import create_app
 from steward.webconsole import CLEAR, ConsoleError, apply_changes, set_in_text
@@ -492,6 +492,52 @@ def test_test_connection_replaces_the_model_pick_list():
     assert marker in page, "测试开始时没有清理上一轮的模型列表"
     after = page[page.index(marker) :]
     assert "stalePick.remove()" in after[:200], "找到旧列表却没有移除，会越点越多"
+
+
+# ---------------------------------------------------------------- 对外模型列表
+
+
+def _models_cfg(tmp_path: Path, aliases: list[str] | None = None) -> AppCfg:
+    cfg = AppCfg(
+        auth=AuthCfg(mode="off", keys_file=str(tmp_path / "keys.json")),
+        base=EndpointCfg(base_url="http://127.0.0.1:11434/v1", model="m"),
+    )
+    cfg.model_aliases = aliases or []
+    return cfg
+
+
+def test_models_lists_only_the_public_model_by_default(tmp_path):
+    """默认只返回一个模型。
+
+    模板以前带 `model_aliases: [local, steward]`，客户端会列出三个模型，
+    用户以为网关挂了三个模型 —— 别名应该是显式配置的，不是出厂默认。
+    """
+    app = create_app(_models_cfg(tmp_path))
+    status, body = call(app, "get", "/v1/models")
+    assert status == 200
+    assert [m["id"] for m in body["data"]] == ["auto"]
+
+
+def test_models_lists_explicit_aliases(tmp_path):
+    """显式配了别名就照常列出来，别顺手把功能也删了。"""
+    app = create_app(_models_cfg(tmp_path, ["local", "steward"]))
+    status, body = call(app, "get", "/v1/models")
+    assert status == 200
+    assert [m["id"] for m in body["data"]] == ["auto", "local", "steward"]
+
+
+def test_key_panel_offers_copy_and_reissue():
+    """签发时明文只出现一次，所以至少要给复制按钮和重签入口。
+
+    真实反馈：设备那边要填 key，用户不知道去哪拿；控制台签完就消失，
+    又没法事后查看（库里只存 hash）。
+    """
+    page = (Path(__file__).resolve().parents[1] / "steward" / "web" / "console.html").read_text(
+        encoding="utf-8"
+    )
+    assert "const showIssued" in page, "签发结果没有统一的展示函数"
+    assert "keys.copy" in page, "没有复制按钮"
+    assert "data-reissue" in page, "没有「重新签发」入口"
 
 
 # ---------------------------------------------------------------- key 管理

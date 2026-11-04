@@ -427,7 +427,7 @@ const I18N = {
     "srv.hostHint": "127.0.0.1 只给本机；0.0.0.0 给局域网（此时鉴权强制 enabled）",
     "srv.port": "端口",
     "keys.title": "项目 key",
-    "keys.desc": "发给智能体的那把。明文只在签发时出现一次，库里只存 hash。",
+    "keys.desc": "发给智能体的那把。明文只在签发时出现一次，库里只存 hash；忘了就重新签发。",
     "keys.label": "标签",
     "keys.created": "创建",
     "keys.usage": "用量",
@@ -439,6 +439,11 @@ const I18N = {
     "keys.none": "还没有 key",
     "keys.confirmRevoke": "吊销后这把 key 立刻失效，确定？",
     "keys.newPrefix": "新 key（只显示这一次，复制走）：",
+    "keys.copy": "复制",
+    "keys.copied": "已复制",
+    "keys.selectHint": "已选中，按 Ctrl+C",
+    "keys.reissue": "重新签发",
+    "keys.confirmReissue": "重新签发会让旧 key 立即失效，确定？",
     "save.button": "保存并校验",
     "chips.today": "今日 {n} 次",
     "chips.unlimited": "不限",
@@ -527,7 +532,7 @@ const I18N = {
     "srv.hostHint": "127.0.0.1 for this machine only; 0.0.0.0 for the LAN (auth is then forced on)",
     "srv.port": "Port",
     "keys.title": "Project keys",
-    "keys.desc": "The key you hand to the agent. Shown once at issue time; only a hash is stored.",
+    "keys.desc": "The key you hand to the agent. Shown once at issue time; only a hash is stored. Lost it? Reissue.",
     "keys.label": "Label",
     "keys.created": "Created",
     "keys.usage": "Calls",
@@ -539,6 +544,11 @@ const I18N = {
     "keys.none": "No keys yet",
     "keys.confirmRevoke": "Revoking this key disables it immediately. Continue?",
     "keys.newPrefix": "New key (shown once, copy it now):",
+    "keys.copy": "Copy",
+    "keys.copied": "Copied",
+    "keys.selectHint": "Selected — press Ctrl+C",
+    "keys.reissue": "Reissue",
+    "keys.confirmReissue": "Reissuing revokes the old key immediately. Continue?",
     "save.button": "Save & validate",
     "chips.today": "today {n} calls",
     "chips.unlimited": "unlimited",
@@ -770,6 +780,27 @@ const render = (s) => {
   // 一清就把「已保存」和英文的 "Saved" 一起抹掉了。
 };
 
+// 明文只显示这一次，所以给个复制按钮。控制台常从局域网 IP 打开，不是安全上下文，
+// navigator.clipboard 可能不存在；那就退回到「选中文本，让用户按 Ctrl+C」。
+const showIssued = (token) => {
+  const box = $("#newKeyBox");
+  box.style.display = "block";
+  box.innerHTML = `${t("keys.newPrefix")}<br><code>${token}</code> <button id="copyKey">${t("keys.copy")}</button>`;
+  $("#copyKey").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(token);
+      $("#copyKey").textContent = t("keys.copied");
+    } catch (e) {
+      const range = document.createRange();
+      range.selectNodeContents(box.querySelector("code"));
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      $("#copyKey").textContent = t("keys.selectHint");
+    }
+  };
+};
+
 const loadKeys = async () => {
   const rows = await api("keys");
   $("#keyRows").innerHTML = rows.length ? rows.map(k => `
@@ -779,8 +810,18 @@ const loadKeys = async () => {
       <td>${(k.created_at || "").replace("T", " ")}</td>
       <td>${k.calls || 0}</td>
       <td>${k.enabled ? t("keys.active") : t("keys.revoked")}</td>
-      <td>${k.enabled ? `<button class="danger" data-revoke="${k.id}">${t("keys.revoke")}</button>` : ""}</td>
+      <td>${k.enabled ? `<button data-reissue="${k.id}" data-label="${k.label || ""}">${t("keys.reissue")}</button> <button class="danger" data-revoke="${k.id}">${t("keys.revoke")}</button>` : ""}</td>
     </tr>`).join("") : `<tr><td colspan="6" style="color:var(--muted)">${t("keys.none")}</td></tr>`;
+  document.querySelectorAll("[data-reissue]").forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(t("keys.confirmReissue"))) return;
+      // 明文取不回来，只能吊销旧的、换一把新的；标签沿用，设备那边换一下即可。
+      await api("keys/revoke", { id: btn.dataset.reissue });
+      const d = await api("keys/new", { label: btn.dataset.label || "" });
+      showIssued(d.token);
+      loadKeys();
+    };
+  });
   document.querySelectorAll("[data-revoke]").forEach(btn => {
     btn.onclick = async () => {
       if (!confirm(t("keys.confirmRevoke"))) return;
@@ -930,9 +971,7 @@ const doRestart = async () => {
 $("#newKey").onclick = async () => {
   try {
     const d = await api("keys/new", { label: $("#keyLabel").value.trim() });
-    const box = $("#newKeyBox");
-    box.style.display = "block";
-    box.innerHTML = `${t("keys.newPrefix")}<br><code>${d.token}</code>`;
+    showIssued(d.token);
     $("#keyLabel").value = "";
     loadKeys();
   } catch (e) {

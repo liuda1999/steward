@@ -6,8 +6,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-484%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.6.4-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-488%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.6.5-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **A local-first LLM gateway that blends local inference with the cloud, cutting cloud API costs sharply.**
 > One **OpenAI-compatible** endpoint, two model slots: everyday requests stay local, the cloud only steps in when it is really needed.
@@ -27,7 +27,7 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 
 | | |
 |---|---|
-| Version | **v1.6.4** ([release notes](docs/releases/v1.6.4.md)) |
+| Version | **v1.6.5** ([release notes](docs/releases/v1.6.5.md)) |
 | Protocol | Downstream is `/v1/chat/completions` only (OpenAI-compatible); each upstream slot may speak chat or responses |
 | Upstream | any OpenAI-compatible endpoint: llama.cpp / vLLM / LM Studio / Ollama / a cloud API |
 | Shape | single-process FastAPI, no database; web console on the same port |
@@ -180,7 +180,7 @@ api_key  = "st-..."        # shown once at issue time; only the hash is stored
 >
 > **Downstream is Chat Completions only.** `responses` is an optional protocol for an **upstream slot**, not a public endpoint; a client that only speaks `/v1/responses` cannot use this gateway.
 
-**A lost key can only be reissued** — the gateway stores a sha256 and cannot recover it. The console's *project key* panel issues and revokes them, with the same one-time display.
+**A lost key can only be reissued** — the gateway stores a sha256 and cannot recover it. The console's *project key* panel can issue, revoke, or *reissue* a key (revokes the old one, keeps the label); the result has a one-click copy, but the plaintext appears only once.
 
 ### 3.3 LAN, autostart, upgrades
 

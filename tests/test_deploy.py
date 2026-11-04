@@ -429,6 +429,16 @@ def test_start_bat_scans_common_install_dirs():
     assert '"%PY:~1,1%"==":"' in text
 
 
+def test_template_ships_no_model_aliases():
+    """模板不该带默认别名。
+
+    带 [local, steward] 时，客户端会看到三个模型，用户以为是三套模型在跑。
+    别名是「需要时自己加」的东西，默认值应该只有一个 public_model。
+    """
+    text = (ROOT / "steward" / "config.example.yaml").read_text(encoding="utf-8")
+    assert "model_aliases: []" in text, "模板又带上默认别名了"
+
+
 def test_start_scripts_are_documented():
     """启动脚本必须出现在 README 里，否则没人知道它存在。"""
     for name in ("README.md", "README.en.md"):

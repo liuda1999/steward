@@ -6,8 +6,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-484%20passing-brightgreen.svg)](tests)
-[![Version](https://img.shields.io/badge/version-1.6.4-informational.svg)](https://github.com/liuda1999/steward/releases)
+[![Tests](https://img.shields.io/badge/tests-488%20passing-brightgreen.svg)](tests)
+[![Version](https://img.shields.io/badge/version-1.6.5-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **本地推理与云端混用的 LLM 网关（local-first LLM gateway），大幅降低云端 API 开销。**
 > 一个 **OpenAI-compatible** 端点、两个模型槽位：日常请求走本地，云端只在真正需要时出场。
@@ -27,7 +27,7 @@ steward 就把这块拦下来：**默认走本地，云端只在模型主动申�
 
 | | |
 |---|---|
-| 版本 | **v1.6.4**（[发布说明](docs/releases/v1.6.4.md)） |
+| 版本 | **v1.6.5**（[发布说明](docs/releases/v1.6.5.md)） |
 | 协议 | 对外只提供 `/v1/chat/completions`（OpenAI 兼容）；上游槽位可选 chat 或 responses |
 | 上游 | 任意 OpenAI 兼容端点：llama.cpp / vLLM / LM Studio / Ollama / 云 API |
 | 形态 | 单进程 FastAPI，无数据库；同一端口带 Web 控制台 |
@@ -180,7 +180,7 @@ api_key  = "st-..."        # 签发时只显示一次，之后只存 hash
 >
 > **对外只有 Chat Completions。** `responses` 是**上游槽位**的可选协议，不是对外端点；只会说 `/v1/responses` 的客户端连不上这个网关。
 
-**key 丢了只能重新签发** —— 网关只存 sha256，找不回来。控制台的「项目 key」可以签发和吊销，同样是只显示一次。
+**key 丢了只能重新签发** —— 网关只存 sha256，找不回来。控制台「项目 key」可以签发、吊销，也可以对某一把点「重新签发」（吊销旧的、换一把新的，标签沿用）；签发结果带一键复制，但明文只出现这一次。
 
 ### 3.3 局域网、开机自启、升级
 
