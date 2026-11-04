@@ -19,19 +19,35 @@ setlocal
 set "ROOT=%~dp0.."
 pushd "%ROOT%"
 
+REM Pick an interpreter. Not every Windows Python installs the py launcher,
+REM and some expose python but not py (Microsoft Store builds, for example).
+REM Order: PYTHON env var -> project .venv -> py -3 -> python -> python3.
 set "PY="
 if defined PYTHON set "PY=%PYTHON%"
-if not defined PY set "PY=py -3"
+
+if not defined PY if exist ".venv\Scripts\python.exe" set "PY=.venv\Scripts\python.exe"
 
 if not defined PY (
-    echo [env] Python not found. Install Python 3.11+ from https://www.python.org/downloads/
+    py -3 -c "import sys" >nul 2>nul
+    if not errorlevel 1 set "PY=py -3"
+)
+if not defined PY (
+    python -c "import sys" >nul 2>nul
+    if not errorlevel 1 set "PY=python"
+)
+if not defined PY (
+    python3 -c "import sys" >nul 2>nul
+    if not errorlevel 1 set "PY=python3"
+)
+
+if not defined PY (
+    echo [env] No Python found on PATH. Install Python 3.11+ from
+    echo       https://www.python.org/downloads/ and tick "Add python.exe to PATH".
+    echo       Already installed? Point the PYTHON environment variable at it.
     popd
     endlocal
     exit /b 1
 )
-
-REM Prefer the project virtualenv when there is one.
-if exist ".venv\Scripts\python.exe" set "PY=.venv\Scripts\python.exe"
 
 %PY% -m steward start %*
 set "RC=%ERRORLEVEL%"

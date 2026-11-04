@@ -384,12 +384,45 @@ def test_start_bat_uses_the_project_entry():
     assert "-m steward start" in text
 
 
+def test_start_bat_falls_back_when_py_is_missing():
+    """不能只认 `py` 启动器。
+
+    真实反馈：Windows 上只装了 python（微软商店版不带 py 启动器），
+    脚本写死 `py -3` 时窗口一闪就关，用户以为「这个项目根本没有启动方式」。
+    所以三个候选都必须先探测再使用，且探测要用 `-c "import sys"`。
+    """
+    text = (ROOT / "scripts" / "start.bat").read_text(encoding="utf-8")
+    assert 'py -3 -c "import sys"' in text, "没探测 py"
+    assert 'python -c "import sys"' in text, "没回退到 python"
+    assert 'python3 -c "import sys"' in text, "没回退到 python3"
+    # 旧写法：无条件 set "PY=py -3"，py 不存在时直接炸。
+    assert 'if not defined PY set "PY=py -3"' not in text
+
+
 def test_start_scripts_are_documented():
     """启动脚本必须出现在 README 里，否则没人知道它存在。"""
     for name in ("README.md", "README.en.md"):
         text = (ROOT / name).read_text(encoding="utf-8")
-        assert "scripts/start.sh" in text, f"{name} 没提 scripts/start.sh"
-        assert "scripts/start.bat" in text, f"{name} 没提 scripts/start.bat"
+        assert "start.sh" in text, f"{name} 没提 start.sh"
+        assert "start.bat" in text, f"{name} 没提 start.bat"
+
+
+def test_readme_puts_startup_before_the_architecture():
+    """启动方式必须排在「它解决什么问题」之前，不能埋在部署章节里。
+
+    真实反馈：用户把整份介绍翻完，也没找到「日常怎么启动」。
+    读者找的是「怎么跑」，不是「你解决了什么」。
+    """
+    cases = (
+        ("README.md", "快速启动", "## 一、"),
+        ("README.en.md", "Quick start", "## 1. What it solves"),
+    )
+    for name, marker, later in cases:
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert marker in text, f"{name} 没有「{marker}」章节"
+        assert text.index(marker) < text.index(later), (
+            f"{name} 里「{marker}」排在「{later}」之后，用户找不到"
+        )
 
 
 # ---------------------------------------------------------------- 部署文档

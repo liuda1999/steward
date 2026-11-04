@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-477%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-479%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.6.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **给本地 AI 助手用的 token 成本治理网关（local-first LLM gateway）。**
@@ -35,6 +35,42 @@ steward 就把这块拦下来：**默认走本地，云端只在模型主动申�
 | 许可证 | **Apache-2.0** —— 可商用、可修改、可闭源分发，含专利授权 |
 
 **名字取自「管家」。** 它不替你决定做什么，只管三件事：账本（花不花得起）、窗口（装不装得下）、档案（存不存得住）。
+
+---
+
+## 快速启动（日常就这一条命令）
+
+不用先读架构，三步就能跑起来：
+
+```bash
+git clone https://github.com/liuda1999/steward.git
+cd steward
+./scripts/start.sh          # Linux / macOS
+```
+
+```bat
+REM Windows（在项目根目录的 cmd 或 PowerShell 里）
+scripts\start.bat
+```
+
+首次运行会自动检查环境、生成 `config.yaml`、启动服务，并打印控制台地址和一次性口令：
+
+```
+  控制台 http://127.0.0.1:27418/
+  口令   xxxxxxxxxxxxxxxx
+```
+
+**之后每次启动都是同一条命令**（`./scripts/start.sh` 或 `scripts\start.bat`）。`config.yaml` 已经在了，不会覆盖你的配置。
+
+不想用脚本，在项目根目录直接：
+
+```bash
+python -m steward start     # 检查环境 → 备配置 → 起服务（新手用这条）
+python -m steward serve     # 配置已就绪时，直接起
+python -m steward --help    # 看全部子命令
+```
+
+> 服务起来后，浏览器打开 <http://127.0.0.1:27418/> 就是控制台。模型端点即使没开，服务和控制台也能正常启动 —— 只是 `/v1` 对话会失败。
 
 ---
 
@@ -90,7 +126,12 @@ steward 就把这块拦下来：**默认走本地，云端只在模型主动申�
 ```bash
 git clone https://github.com/liuda1999/steward.git
 cd steward
-./scripts/start.sh          # Windows：scripts/start.bat
+./scripts/start.sh          # Linux / macOS
+```
+
+```bat
+REM Windows
+scripts\start.bat
 ```
 
 它会检查环境、生成配置、启动服务，并打印控制台地址和一次性口令：

@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-477%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-479%20passing-brightgreen.svg)](tests)
 [![Version](https://img.shields.io/badge/version-1.6.0-informational.svg)](https://github.com/liuda1999/steward/releases)
 
 > **Token-cost governance for local AI agents (a local-first LLM gateway).**
@@ -35,6 +35,42 @@ agent ──OpenAI-compatible──▶ 127.0.0.1:27418/v1 ──┬── local 
 | License | **Apache-2.0** — commercial use, modification, closed-source distribution, with a patent grant |
 
 **The name means "steward".** It does not decide what you do; it keeps three things: the books (can you afford this call), the window (does it still fit), the archive (does it survive on disk).
+
+---
+
+## Quick start (the one command you run every day)
+
+You do not need to read the architecture first. Three steps:
+
+```bash
+git clone https://github.com/liuda1999/steward.git
+cd steward
+./scripts/start.sh          # Linux / macOS
+```
+
+```bat
+REM Windows (cmd or PowerShell, from the repo root)
+scripts\start.bat
+```
+
+The first run checks the environment, generates `config.yaml`, starts the gateway, and prints the console URL with a one-time token:
+
+```
+  console http://127.0.0.1:27418/
+  token   xxxxxxxxxxxxxxxx
+```
+
+**Every later start is the same command** (`./scripts/start.sh` or `scripts\start.bat`). `config.yaml` already exists and is never overwritten.
+
+No script? From the repo root:
+
+```bash
+python -m steward start     # check env -> prepare config -> start (use this first)
+python -m steward serve     # config already in place: start directly
+python -m steward --help    # list every subcommand
+```
+
+> Once it is up, open <http://127.0.0.1:27418/> for the console. The gateway and console start fine even when the model endpoint is down — only `/v1` calls will fail.
 
 ---
 
@@ -90,7 +126,12 @@ Window size has no tiers: `context.ctx_limit` is any integer (100000 or 1048576 
 ```bash
 git clone https://github.com/liuda1999/steward.git
 cd steward
-./scripts/start.sh          # Windows: scripts/start.bat
+./scripts/start.sh          # Linux / macOS
+```
+
+```bat
+REM Windows
+scripts\start.bat
 ```
 
 It checks the environment, generates a config, starts the gateway, and prints the console URL with a one-time token:
