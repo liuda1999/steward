@@ -540,18 +540,25 @@ def test_start_script_runs_end_to_end(tmp_path):
     这是唯一一条覆盖「用户照着 README 做」全过程的测试：
     脚本 → python -m steward start → 配置生成 → 服务监听。
     """
-    port = 27431
+    port = _free_port()
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT)
-    env["PYTHONHOME"] = env.get("PYTHONHOME", "")
+    # 别把 PYTHONHOME 设成空串来「清空」：CPython 会把空值当成已设置，
+    # 然后找不到标准库直接退出。要隔离外部设置就整个删掉，让它自己探测。
+    env.pop("PYTHONHOME", None)
+    cfg_path = tmp_path / "config.yaml"
 
+    # start.sh 自己会 cd 到仓库根目录，所以不能靠 cwd 决定配置落点：
+    # 不显式给 --config，配置会生成在仓库里，下面的断言永远落空，
+    # 还会在源码树里留下一份 config.yaml。CI 的 Linux job 会真跑这条。
     proc = subprocess.Popen(
-        ["bash", str(ROOT / "scripts" / "start.sh"), "--port", str(port)],
+        ["bash", str(ROOT / "scripts" / "start.sh"), "--port", str(port), "--config", str(cfg_path)],
         cwd=str(tmp_path),
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        errors="replace",  # Windows 控制台可能是 GBK，别让读日志的线程先炸
     )
     try:
         import time
@@ -560,20 +567,28 @@ def test_start_script_runs_end_to_end(tmp_path):
 
         deadline = time.time() + 45
         health = None
-        while time.time() < deadline:
-            if proc.poll() is not None:
-                break
-            try:
-                health = httpx.get(f"http://127.0.0.1:{port}/health", timeout=2.0)
-                break
-            except httpx.HTTPError:
-                time.sleep(0.4)
+        # 开发机/CI 都可能设了 HTTP_PROXY。回环请求必须绕过代理，
+        # 否则 health 一直超时，看起来就像服务没起来。
+        with httpx.Client(trust_env=False, timeout=2.0) as client:
+            while time.time() < deadline:
+                if proc.poll() is not None:
+                    break
+                try:
+                    health = client.get(f"http://127.0.0.1:{port}/health")
+                    break
+                except httpx.HTTPError:
+                    time.sleep(0.4)
         assert health is not None and health.status_code == 200, "启动脚本没能把服务拉起来"
         # 首次启动必须顺手把配置生成好
-        assert (tmp_path / "config.yaml").is_file()
+        assert cfg_path.is_file(), "首次启动没有生成配置"
     finally:
         proc.terminate()
         try:
-            proc.wait(timeout=10)
+            out, _ = proc.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+            out, _ = proc.communicate()
+        # 失败时 pytest 会把这段一起打出来，否则只知道「没起来」，
+        # 分不清是端口被占、依赖缺失还是脚本报错。
+        if out:
+            print(f"启动脚本输出：\n{out[:2000]}")

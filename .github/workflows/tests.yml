@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# 只做一件事：在干净环境里把全量测试跑一遍。
+# 不构建、不发版、不碰任何凭据 —— 发布仍由 scripts/publish.py 手工完成。
+# README 顶部的测试徽章指向本文件，手写的用例数从此不用再维护。
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 连续发版本时，同分支的新推送取消还在排队的旧任务，别让同一批代码跑两次。
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: py${{ matrix.python }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+          python -m pip install -e .
+      - name: Test
+        run: python -m pytest -q
