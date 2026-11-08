@@ -143,7 +143,8 @@ class Guard:
             turn.texts.append(norm)
             turn.calls += 1
             self._used_today += 1
-            self._last_call_ts = now
+            # 冷却不在这里启动：放行只是「准许花钱」，请求可能连不上、可能被退回。
+            # 真拿到交付物之后才由 mark_called() 计时。
             self._save()
             return Decision(True)
 
@@ -171,8 +172,23 @@ class Guard:
             self._history = self._history[-200:]
             self._save()
 
+    async def mark_called(self) -> None:
+        """只有真正发出、并成功拿到交付物的进阶调用才启动冷却。
+
+        旧行为在 reserve 放行时就记时间戳：连接失败后即使 refund 退了额度，
+        30 秒内仍被 cooldown 挡住 —— 模型想问也问不出去。现在冷却计的是
+        「两次成功的外援之间」，失败或被退回的调用不该占这个窗口。
+        """
+        async with self._lock:
+            self._last_call_ts = time.time()
+            self._save()
+
     async def refund(self, turn: TurnState) -> None:
-        """请求根本没发出去（连接失败），退回配额。"""
+        """请求根本没发出去（连接失败），退回配额。
+
+        冷却由 mark_called() 只在成功后启动，所以退款路径不会留下冷却；
+        这里只退计数，不去动别的请求留下的合法冷却。
+        """
         async with self._lock:
             turn.calls = max(0, turn.calls - 1)
             self._used_today = max(0, self._used_today - 1)

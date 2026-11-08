@@ -88,6 +88,22 @@ def test_duplicate_brief(tmp_path):
 
 
 def test_cooldown(tmp_path):
+    """拦的是「两次成功的外援之间」，所以要先 mark_called 才计时。"""
+    guard = make_guard(tmp_path, max_calls_per_turn=10, min_interval_s=60)
+
+    async def scenario():
+        a = await guard.reserve(guard.new_turn(), "design", "问题一", "brief 一")
+        await guard.mark_called()
+        b = await guard.reserve(guard.new_turn(), "design", "问题二", "brief 二")
+        return a, b
+
+    a, b = run(scenario())
+    assert a.allowed
+    assert not b.allowed and b.code == "cooldown"
+
+
+def test_reserve_alone_does_not_start_cooldown(tmp_path):
+    """放行只是准许，没拿到交付物之前不该占用冷却窗口。"""
     guard = make_guard(tmp_path, max_calls_per_turn=10, min_interval_s=60)
 
     async def scenario():
@@ -96,8 +112,29 @@ def test_cooldown(tmp_path):
         return a, b
 
     a, b = run(scenario())
-    assert a.allowed
-    assert not b.allowed and b.code == "cooldown"
+    assert a.allowed and b.allowed
+
+
+def test_refund_leaves_no_cooldown(tmp_path):
+    """连接失败后退了额度，就该能立刻再问，别被 30 秒冷却挡在门外。
+
+    这是「想花钱也花不出去」最直接的一条：旧实现在 reserve 时就记时间戳，
+    refund 只退计数、不退时间戳，于是失败之后的整个冷却窗口都问不了。
+    """
+    guard = make_guard(tmp_path, max_calls_per_turn=10, min_interval_s=60)
+
+    async def scenario():
+        turn = guard.new_turn()
+        first = await guard.reserve(turn, "design", "问题一", "brief 一")
+        await guard.refund(turn)
+        second = await guard.reserve(guard.new_turn(), "design", "问题二", "brief 二")
+        return first, second, await guard.snapshot()
+
+    first, second, snap = run(scenario())
+    assert first.allowed
+    assert second.allowed, second.code
+    assert snap["used_today"] == 1
+    assert snap["last_call_ts"] == 0
 
 
 def test_persistence_across_instances(tmp_path):

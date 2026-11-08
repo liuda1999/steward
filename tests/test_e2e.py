@@ -205,6 +205,49 @@ def ask(app, text: str, **extra) -> httpx.Response:
     return post(app, payload)
 
 
+# ---------------------------------------------------------------- 求助通道可见性
+
+
+def _consult_header(app, **extra):
+    return ask(app, "DIRECT 直接答", **extra).headers.get("x-steward-consult")
+
+
+def test_consult_channel_is_available_by_default(tmp_path):
+    up = Upstreams()
+    app = create_app(make_cfg(tmp_path), MockAsyncTransport(up.handler))
+    resp = ask(app, "DIRECT 直接答")
+    assert resp.headers["x-steward-consult"] == "available"
+    assert resp.json()["x_steward"]["consult"] == "available"
+
+
+def test_consult_channel_reports_empty_advanced_slot(tmp_path):
+    cfg = make_cfg(tmp_path)
+    cfg.advanced.base_url = ""
+    cfg.advanced.model = ""
+    app = create_app(cfg, MockAsyncTransport(Upstreams().handler))
+    assert _consult_header(app) == "advanced-slot-empty"
+
+
+def test_consult_channel_reports_client_name_conflict(tmp_path):
+    app = create_app(make_cfg(tmp_path), MockAsyncTransport(Upstreams().handler))
+    own = [{"type": "function", "function": {"name": "consult_cloud", "parameters": {}}}]
+    assert _consult_header(app, tools=own) == "client-tool-name-conflict"
+
+
+def test_consult_channel_reports_locked_tool_choice(tmp_path):
+    app = create_app(make_cfg(tmp_path), MockAsyncTransport(Upstreams().handler))
+    locked = {"type": "function", "function": {"name": "read_file"}}
+    assert _consult_header(app, tool_choice=locked) == "tool-choice-locked"
+    assert _consult_header(app, tool_choice="none") == "tool-choice-locked"
+
+
+def test_force_finish_text_does_not_claim_consultation_was_used():
+    from steward.prompts import DEFAULT_FORCE_FINISH_TEXT
+
+    assert "咨询轮次已用尽" not in DEFAULT_FORCE_FINISH_TEXT
+    assert "工具循环" in DEFAULT_FORCE_FINISH_TEXT
+
+
 def test_direct_answer_costs_nothing(tmp_path):
     up = Upstreams()
     app = create_app(make_cfg(tmp_path), MockAsyncTransport(up.handler))

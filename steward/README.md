@@ -527,6 +527,8 @@ python -m steward refs src/auth/session.py .env /etc/passwd
 
 计数在**放行时**就 +1，不等返回，避免并发绕过。连接失败、上游 4xx（请求被直接拒绝、没消耗 token）会自动退回。配额写盘（`state/usage.json`），重启不清零。
 
+冷却（`min_interval_s`）计的是**两次成功的外援之间**，不是「两次放行之间」：放行只是准许花钱，请求可能连不上或被退回，这些不占冷却窗口。连接失败退还配额后立刻可以再问，不会被 30 秒挡在门外。
+
 **退还的覆盖面比"连接失败"更宽。** 只要 `advanced.consult` 抛出了任何非预期异常（响应结构畸形、存档失败、上游 usage 字段给了个 list……），网关也会退回配额并回灌一条说明，而不是让整请求 500。否则模型连"这次失败了"都不知道，只看到一个断掉的连接，而额度已经扣掉。这条路径有专门用例：`tests/test_reliability.py`。
 
 三道保证都有测试盯着：并发 10 个请求抢 3 个额度恰好只过 3 个（锁是有效的）、跨天自动归零、重启不清零。
@@ -580,6 +582,7 @@ X-Steward-Calls: 1       本次真正花了钱
 X-Steward-Denied: 2      被拦了几次
 X-Steward-Remaining: 4   今天还剩几次
 X-Steward-Rounds: 3      基础模型循环了几轮
+X-Steward-Consult: available  求助通道状态；不可用时给出原因（见排错表）
 X-Steward-Ctx: used=68926 budget=106803 saved=90313   末轮实际发送 / 预算 / 省下多少
 X-Steward-Truncated: 1   检测到上游静默截断（只在真发生时出现）
 X-Steward-Refs: 3        本次随委托附上的本地文件数（只在 refs 真读了东西时出现）
@@ -732,7 +735,7 @@ guard:
 | 基础模型连不上 | 服务没起 / 端口不对 / base_url 少了 `/v1` / key 不对 |
 | 每隔一次就 502，日志说 404 | 上游 keep-alive 有缺陷（实测 llama.cpp 出现过 200/404/200/404）。`retry_404` 会自动切短连接，日志里有 `换短连接重试一次` |
 | 复杂任务返回空 | 推理型模型没关 thinking，预算被思维链吃光。设 `thinking: "off"` |
-| 一直不调用进阶模型 | 工具描述太保守 / 模型 tool calling 不稳 / 客户端 `tool_choice` 锁死了别的工具 |
+| 一直不调用进阶模型 | 先看 `X-Steward-Consult` 响应头：`advanced-slot-empty`（进阶槽位没配）、`client-tool-name-conflict`（客户端自带同名工具）、`tool-choice-locked`（`tool_choice` 锁死了别的函数或设成 `none`）；若显示 `available`，再查工具描述是否太保守、模型 tool calling 是否稳、上游有没有静默截断 system |
 | 每次都调进阶模型 | `tool_description` 写松了，收紧白名单 |
 | 拦截次数偏高 | 模型在钻牛角尖。看 `/admin/usage` 的 `ask` 字段，通常是委托单写得太模糊 |
 | 启动报 `server.host 是对外监听` | `host: 0.0.0.0` 配了 `auth.mode: off`，改回 `required` |

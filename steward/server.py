@@ -555,6 +555,25 @@ def create_app(
         turn = guard.new_turn(getattr(request.state, "key_id", ""))
 
         tools, tool_injected = merge_tools(body.get("tools"), tool_def)
+        # 通道可用性要让调用方看得见。以前客户端锁死 tool_choice 或自带同名
+        # 工具时，服务端只写一条 WARNING，用户看到的只是「模型一直不问」。
+        consult_state = "available"
+        if tool_def is None:
+            consult_state = "advanced-slot-empty"
+        elif not tool_injected:
+            consult_state = "client-tool-name-conflict"
+        else:
+            choice = body.get("tool_choice")
+            locked = (
+                str(((choice or {}).get("function") or {}).get("name") or "")
+                if isinstance(choice, dict)
+                else ""
+            )
+            if choice == "none" or (locked and locked != CONSULT_NAME):
+                consult_state = "tool-choice-locked"
+                logger.warning(
+                    "客户端 tool_choice 指向 %s，模型无法调用 %s", locked or "none", CONSULT_NAME
+                )
 
         # 配额每轮都在变，所以每轮现拼。模型知道自己还剩几次，才会掂量着用；
         # 只靠被拒后那条提示太晚，那一轮已经浪费了。
@@ -914,6 +933,8 @@ def create_app(
                 }, result.ok, result.elapsed_ms, result.error)
 
                 if result.ok:
+                    # 冷却计的是「两次成功的外援之间」，不是「两次放行之间」。
+                    await guard.mark_called()
                     logger.info(
                         "进阶模型返回 turn=%s kind=%s %sms tokens=%s/%s%s",
                         turn.turn_id,
@@ -985,7 +1006,7 @@ def create_app(
                     logger.error("收尾调用失败: %s", exc)
                     final_message = {
                         "role": "assistant",
-                        "content": "[网关] 咨询轮次已用尽，且本地模型收尾失败。请检查本地服务后重试。",
+                        "content": "[网关] 本轮工具循环已达上限，且本地模型收尾失败。请检查本地服务后重试。",
                     }
                     finish_reason = "stop"
                     break
@@ -1014,6 +1035,7 @@ def create_app(
             "truncated": truncated,
             "refs_files": refs_files,
             "cloud_ms": cloud_ms,
+            "consult": consult_state,
         }
         usage = build_usage(last_resp, turn)
         headers = {
@@ -1021,6 +1043,7 @@ def create_app(
             "X-Steward-Denied": str(turn.denied),
             "X-Steward-Remaining": "" if snap["remaining_today"] is None else str(snap["remaining_today"]),
             "X-Steward-Rounds": str(rounds),
+            "X-Steward-Consult": consult_state,
             "X-Steward-Ctx": f"used={last_report.after} budget={budget} saved={last_report.saved}",
         }
         if cloud_ms:
